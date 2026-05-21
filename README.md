@@ -26,8 +26,29 @@ Then open `http://127.0.0.1:18081/sport/`.
 /root/.pyenv/versions/3.10.13/bin/python3 scripts/refresh_data.py
 ```
 
-The refresh script currently recomputes weekly/monthly summaries from `data/dashboard.json`.
-For unattended COROS fetching, install and authenticate `cygnusb/coros-mcp` on the server, then wire its JSON output into this same script.
+The refresh script first calls the local `cygnusb/coros-mcp` checkout, then recomputes weekly/monthly summaries from `data/dashboard.json`.
+
+Current server integration:
+
+- coros-mcp checkout: `/root/workspace/coros-mcp`
+- coros-mcp Python: `/root/workspace/coros-mcp/.venv/bin/python`
+- refresh entrypoint: `/root/workspace/sports-log/scripts/refresh_data.py`
+- cron: daily at 23:00
+
+Manual auth check:
+
+```bash
+/root/workspace/coros-mcp/.venv/bin/coros-mcp auth-status
+```
+
+Manual auth:
+
+```bash
+cd /root/workspace/coros-mcp
+/root/workspace/coros-mcp/.venv/bin/coros-mcp auth
+```
+
+Note: `coros-mcp auth` stores a 24-hour web token. For fully unattended daily refresh after token expiry, put `COROS_EMAIL`, `COROS_PASSWORD`, and `COROS_REGION` in `/root/workspace/coros-mcp/.env` with restrictive permissions, or re-authenticate manually before the token expires.
 
 References used for summary rules:
 
@@ -35,4 +56,3 @@ References used for summary rules:
 - ACSM Physical Activity Guidelines: https://acsm.org/education-resources/trending-topics-resources/physical-activity-guidelines/
 - TrainingPeaks Form / TSB: https://help.trainingpeaks.com/hc/en-us/articles/204071764-Form-TSB
 - coros-mcp: https://github.com/cygnusb/coros-mcp
-

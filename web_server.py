@@ -130,6 +130,48 @@ def activity_table(rows):
     ) % "".join(trs)
 
 
+def workout_panel(rows):
+    items = []
+    for row in rows[:8]:
+        items.append(
+            '<li><strong>%s</strong><span>%s · %s steps · %s min</span></li>'
+            % (
+                esc(row.get("name")),
+                esc(row.get("sport_name")),
+                esc(row.get("exercise_count")),
+                esc(round((row.get("estimated_time_seconds") or 0) / 60, 1)),
+            )
+        )
+    if not items:
+        items.append("<li><span>暂无结构化训练</span></li>")
+    return '<section class="panel"><h2>训练库</h2><ul class="list">%s</ul></section>' % "".join(items)
+
+
+def cache_panel(data):
+    cache = data.get("coros_cache", {})
+    auth = data.get("meta", {}).get("coros_auth", {})
+    rows = []
+    for key, label in [
+        ("daily_records", "Daily"),
+        ("sleep_records", "Sleep"),
+        ("activities", "Activities"),
+    ]:
+        item = cache.get(key, {})
+        rows.append(
+            '<li><strong>%s</strong><span>%s 条 · %s → %s</span></li>'
+            % (esc(label), esc(item.get("count", 0)), esc(item.get("from") or "—"), esc(item.get("to") or "—"))
+        )
+    rows.append(
+        '<li><strong>Auth</strong><span>%s · mobile %s · token %.1fh</span></li>'
+        % (
+            esc(auth.get("region") or "—"),
+            esc("ok" if auth.get("mobile_authenticated") else "missing"),
+            float(auth.get("expires_in_hours") or 0),
+        )
+    )
+    return '<section class="panel"><h2>COROS MCP</h2><ul class="list">%s</ul></section>' % "".join(rows)
+
+
 def build_home():
     data = load_data()
     day = latest(data)
@@ -205,6 +247,8 @@ svg{width:100%%;height:150px}svg line{stroke:var(--line)}svg polyline{fill:none;
   %s
   %s
   %s
+  %s
+  %s
 </section>
 <p class="foot">汇总规则参考 COROS 训练负荷/训练状态、ACSM/CDC 成人活动建议、TrainingPeaks TSB 负荷平衡思路。这里用于个人训练观察，不构成医疗建议。</p>
 <div class="sources">%s</div>
@@ -235,6 +279,8 @@ svg{width:100%%;height:150px}svg line{stroke:var(--line)}svg polyline{fill:none;
         "".join('<div><span>%s</span><b>%s</b></div>' % (esc(k), esc(v)) for k, v in race.items()),
         devices,
         schedule,
+        workout_panel(data.get("workouts", [])),
+        cache_panel(data),
         bars(recent, "steps", "步数趋势"),
         bars(recent, "sleep_score", "睡眠分趋势", scale=100),
         trend_svg(recent, "hrv", "HRV 趋势", "#2766a6"),

@@ -10,11 +10,14 @@ authenticated.
 import argparse
 import json
 import os
+import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(BASE_DIR, "data", "dashboard.json")
+COROS_PYTHON = os.environ.get("COROS_PYTHON", "/root/workspace/coros-mcp/.venv/bin/python")
+COROS_FETCHER = os.path.join(BASE_DIR, "scripts", "fetch_coros_data.py")
 
 
 def load_data():
@@ -98,7 +101,8 @@ def summarize_bucket(key, bucket, kind):
     sport_counts = Counter(a.get("sport", "Unknown") for a in acts)
     distance = round(sum(a.get("distance_km") or 0 for a in acts), 2)
     duration = round(sum(a.get("duration_min") or 0 for a in acts), 1)
-    exercise_min = int(sum(d.get("exercise_min") or 0 for d in daily))
+    daily_exercise = int(sum(d.get("exercise_min") or 0 for d in daily))
+    exercise_min = daily_exercise if daily_exercise else int(duration)
     summary = {
         "key": key,
         "days": len(daily),
@@ -137,6 +141,24 @@ def recompute(data):
     return data
 
 
+def fetch_coros_if_available():
+    if os.environ.get("SPORTS_LOG_SKIP_COROS") == "1":
+        return
+    if not (os.path.exists(COROS_PYTHON) and os.path.exists(COROS_FETCHER)):
+        print("coros fetch skipped: coros-mcp environment not found")
+        return
+    proc = subprocess.run(
+        [COROS_PYTHON, COROS_FETCHER],
+        cwd=BASE_DIR,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    print(proc.stdout.strip())
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-coros", action="store_true", help="Only report whether coros-mcp is installed.")
@@ -145,6 +167,7 @@ def main():
         rc = os.system("command -v coros-mcp >/dev/null 2>&1")
         print("coros-mcp installed" if rc == 0 else "coros-mcp not installed")
         return 0 if rc == 0 else 1
+    fetch_coros_if_available()
     data = recompute(load_data())
     save_data(data)
     print("refreshed %s" % DATA_FILE)
@@ -153,4 +176,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
