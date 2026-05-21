@@ -17,6 +17,10 @@ COROS_MCP_DIR = os.environ.get("COROS_MCP_DIR", "/root/workspace/coros-mcp")
 
 sys.path.insert(0, COROS_MCP_DIR)
 
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(os.path.join(COROS_MCP_DIR, ".env"))
+
 
 def ymd(day):
     if not day:

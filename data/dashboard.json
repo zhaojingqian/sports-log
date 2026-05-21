@@ -2,7 +2,7 @@
   "meta": {
     "project": "sports-log",
     "timezone": "Asia/Shanghai",
-    "generated_at": "2026-05-21 23:47:24",
+    "generated_at": "2026-05-21 23:50:05",
     "window_start": "2026-03-26",
     "window_end": "2026-05-21",
     "source": "cygnusb/coros-mcp",
@@ -28,7 +28,7 @@
     "coros_auth": {
       "user_id": "465763000502992899",
       "region": "asia",
-      "expires_in_hours": 24.0,
+      "expires_in_hours": 23.9,
       "mobile_authenticated": true
     }
   },
