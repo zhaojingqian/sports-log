@@ -174,122 +174,249 @@ def cache_panel(data):
 
 def build_home():
     data = load_data()
-    day = latest(data)
-    recent = data.get("daily", [])[-30:]
-    acts = data.get("activities", [])
-    profile = data.get("profile", {})
-    recovery = data.get("recovery", {})
-    fitness = data.get("fitness", {})
-    meta = data.get("meta", {})
-    total_distance = round(sum(a.get("distance_km") or 0 for a in acts), 1)
-    total_minutes = int(sum(a.get("duration_min") or 0 for a in acts))
-    race = fitness.get("race_predictions", {})
-    devices = "".join(
-        '<li><strong>%s</strong><span>%s · %s · 保修至 %s</span></li>'
-        % (esc(d.get("name")), esc(d.get("model")), esc(d.get("serial")), esc(d.get("warranty_expires")))
-        for d in data.get("devices", [])
-    )
-    schedule = "".join(
-        '<li><strong>%s</strong><span>%s · %s km · TL %s</span></li>'
-        % (esc(s.get("date")), esc(s.get("name")), esc(s.get("distance_km")), esc(s.get("load")))
-        for s in data.get("schedule", [])
-    ) or "<li><span>暂无计划</span></li>"
-    status_class = "warn" if "requires" in meta.get("automation_status", "") else "ok"
+    payload = {
+        "meta": data.get("meta", {}),
+        "daily": data.get("daily", []),
+        "activities": data.get("activities", []),
+        "summaries": data.get("summaries", {}),
+        "recovery": data.get("recovery", {}),
+        "fitness": data.get("fitness", {}),
+        "schedule": data.get("schedule", []),
+        "workouts": data.get("workouts", []),
+    }
+    json_blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
     html_doc = """<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sports Log · COROS</title>
+<title>Sports Log</title>
 <style>
-:root{color-scheme:light;--ink:#16211d;--muted:#66736e;--line:#d8e1dc;--paper:#f6f4ed;--panel:#ffffff;--green:#167a5b;--blue:#2766a6;--red:#bd4a3a;--gold:#b07a21}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--paper);color:var(--ink);letter-spacing:0}
-a{color:inherit}.shell{max-width:1220px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:1.3fr .7fr;gap:18px;align-items:stretch;margin-bottom:18px}
-.hero-main{background:linear-gradient(135deg,#e9f4ef,#f7f1df);border:1px solid var(--line);border-radius:8px;padding:28px;min-height:260px;display:flex;flex-direction:column;justify-content:space-between}
-.hero h1{font-size:46px;line-height:1;margin:0 0 12px}.hero p{margin:0;color:var(--muted);font-size:16px;max-width:720px}.hero-side{background:#101817;color:white;border-radius:8px;padding:22px;display:grid;gap:12px}
-.pill{display:inline-flex;width:max-content;align-items:center;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:6px 10px;color:#d9eee7;font-size:13px}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-height:102px}.stat span{display:block;color:var(--muted);font-size:13px}.stat strong{display:block;font-size:28px;margin:8px 0 4px}.stat small{color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.panel,.chart{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}.wide{grid-column:1/-1}.panel h2,.chart h3{margin:0 0 14px;font-size:18px}.list{list-style:none;margin:0;padding:0;display:grid;gap:10px}.list li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1ee;padding-bottom:10px}.list li:last-child{border-bottom:0}.list span{color:var(--muted);text-align:right}
-.race{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.race div{background:#f2f6f4;border:1px solid var(--line);border-radius:6px;padding:12px}.race b{display:block;font-size:24px}.race span{color:var(--muted);font-size:13px}
-.bars{height:150px;display:flex;align-items:end;gap:4px;border-bottom:1px solid var(--line);padding-top:12px}.bar{height:130px;flex:1;display:flex;align-items:end;justify-content:center;position:relative}.bar i{display:block;width:100%%;background:linear-gradient(180deg,var(--green),#8abf7f);border-radius:3px 3px 0 0}.bar b{position:absolute;bottom:-20px;font-size:10px;color:var(--muted)}
-svg{width:100%%;height:150px}svg line{stroke:var(--line)}svg polyline{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
-.table-wrap{overflow:auto}table{width:100%%;border-collapse:collapse;font-size:14px}th,td{text-align:left;border-bottom:1px solid #e6ece8;padding:10px;vertical-align:top}th{color:var(--muted);font-weight:650;white-space:nowrap}td{min-width:88px}.ok{color:var(--green)}.warn{color:var(--red)}
-.foot{color:var(--muted);font-size:13px;margin:18px 0 4px}.sources{display:flex;gap:10px;flex-wrap:wrap}.sources a{color:var(--blue);font-size:13px}
-@media (max-width:900px){.hero,.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:34px}.shell{padding:14px}.list li{display:block}.list span{text-align:left;display:block;margin-top:4px}}
-@media (max-width:520px){.stats{grid-template-columns:1fr}.race{grid-template-columns:1fr}}
+:root{color-scheme:light;--ink:#17211d;--muted:#69756f;--soft:#f5f2ea;--panel:#fffdf8;--line:#dedbd0;--green:#15936b;--teal:#1d8ea5;--coral:#de6b4d;--gold:#d99b2b;--violet:#7467c7}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 18% 0,#f0f7ef 0,#f5f2ea 34%,#eee9dc 100%);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0}
+button{font:inherit}.shell{max-width:1240px;margin:0 auto;padding:20px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.brand{display:flex;align-items:center;gap:12px}.mark{width:38px;height:38px;border-radius:50%;background:conic-gradient(from 210deg,var(--green),var(--teal),var(--gold),var(--coral),var(--green));box-shadow:inset 0 0 0 8px #fff8}.brand h1{font-size:20px;margin:0}.brand span{font-size:12px;color:var(--muted)}.seg{display:flex;background:#fff9;border:1px solid var(--line);border-radius:999px;padding:4px;gap:3px}.seg button{border:0;background:transparent;border-radius:999px;padding:7px 12px;color:var(--muted);cursor:pointer}.seg button.active{background:#17211d;color:white}
+.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:14px;margin-bottom:14px}.stage{position:relative;min-height:340px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(135deg,#fffcf3 0,#e8f4ef 52%,#f8e8da 100%);overflow:hidden;padding:22px}.stage canvas{position:absolute;inset:0;width:100%;height:100%}.hero-copy{position:relative;z-index:1;display:flex;flex-direction:column;height:100%;justify-content:space-between}.kicker{display:flex;gap:8px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #ffffffb8;background:#ffffffa8;backdrop-filter:blur(8px);border-radius:999px;padding:7px 10px;font-size:12px;color:#40524b}.headline{margin-top:70px}.headline strong{display:block;font-size:74px;line-height:.92}.headline span{display:block;color:var(--muted);margin-top:10px}.side{display:grid;gap:14px}.ring-card,.panel,.metric{border:1px solid var(--line);border-radius:8px;background:rgba(255,253,248,.86);box-shadow:0 20px 60px #22311e12}.ring-card{padding:20px;display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:center}.ring{position:relative;width:146px;height:146px}.ring svg{width:146px;height:146px;transform:rotate(-90deg)}.ring circle{fill:none;stroke-width:14;stroke-linecap:round}.ring .bg{stroke:#e7e1d5}.ring .fg{stroke:var(--green);stroke-dasharray:0 999}.ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:34px}.ring-card h2{margin:0;font-size:16px}.ring-card .big{font-size:34px;font-weight:780}.mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.mini{background:#f7f4ec;border:1px solid var(--line);border-radius:8px;padding:12px}.mini span,.metric span,.panel h2 small{display:block;color:var(--muted);font-size:12px}.mini b{font-size:22px}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.metric{padding:16px;min-height:112px}.metric b{display:block;font-size:30px;margin:8px 0 8px}.spark{width:100%;height:30px}.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:14px}.panel{padding:18px;min-width:0}.panel h2{display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 12px;font-size:17px}.canvas-wrap{height:300px;position:relative}.canvas-wrap canvas{width:100%;height:100%}.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.tile{border:1px solid var(--line);border-radius:8px;background:#f8f5ec;padding:12px}.tile b{display:block;font-size:24px}.heat{display:grid;grid-template-columns:repeat(19,1fr);gap:4px}.cell{aspect-ratio:1;border-radius:4px;background:#e5e1d5;position:relative}.cell[data-lvl="1"]{background:#b9dbc7}.cell[data-lvl="2"]{background:#72bd90}.cell[data-lvl="3"]{background:#26976a}.cell[data-lvl="4"]{background:#14684d}.activity-list{display:grid;gap:9px;max-height:474px;overflow:auto;padding-right:3px}.activity{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);background:#fffaf2;border-radius:8px;padding:10px;cursor:pointer}.activity:hover{border-color:#bfc9bd;transform:translateY(-1px)}.badge{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#e8f3ee;color:#126046;font-weight:760}.activity h3{margin:0;font-size:14px}.activity p{margin:4px 0 0;color:var(--muted);font-size:12px}.activity .num{text-align:right;font-weight:760}.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.filters button{border:1px solid var(--line);background:#fffaf2;border-radius:999px;padding:6px 10px;color:var(--muted);cursor:pointer}.filters button.active{background:var(--ink);color:white;border-color:var(--ink)}
+.wide{grid-column:1/-1}.summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.summary{border:1px solid var(--line);border-radius:8px;background:#fffaf2;padding:13px;min-height:116px}.summary b{font-size:24px}.summary span{display:block;color:var(--muted);font-size:12px}.progress{height:8px;background:#e8e2d6;border-radius:999px;overflow:hidden;margin-top:10px}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--gold));width:0}.preds{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.pred{border:1px solid var(--line);border-radius:8px;padding:12px;background:#f8f5ec}.pred b{font-size:22px}.muted{color:var(--muted)}.detail-drawer{position:fixed;right:18px;bottom:18px;width:min(420px,calc(100% - 36px));background:#171f1c;color:white;border-radius:8px;padding:18px;box-shadow:0 24px 80px #0007;transform:translateY(130%);transition:.25s ease;z-index:5}.detail-drawer.show{transform:translateY(0)}.detail-drawer button{position:absolute;right:12px;top:10px;border:0;background:#ffffff18;color:white;border-radius:50%;width:30px;height:30px;cursor:pointer}.detail-drawer h2{margin:0 36px 12px 0}.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.detail-stats div{background:#ffffff12;border-radius:8px;padding:10px}.detail-stats span{display:block;color:#b9c6c0;font-size:12px}.empty{color:var(--muted);padding:18px}
+@media (max-width:980px){.hero,.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.headline strong{font-size:54px}.summary-row,.preds{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.shell{padding:12px}.top{align-items:flex-start}.hero{gap:10px}.stage{min-height:300px}.headline{margin-top:42px}.headline strong{font-size:42px}.ring-card{grid-template-columns:1fr}.metrics,.summary-row,.preds{grid-template-columns:1fr}.activity{grid-template-columns:44px 1fr}.activity .num{grid-column:2;text-align:left}.heat{grid-template-columns:repeat(10,1fr)}}
 </style>
 </head>
 <body>
 <main class="shell">
+<div class="top">
+  <div class="brand"><div class="mark"></div><div><h1>Sports Log</h1><span id="updated">--</span></div></div>
+  <div class="seg" aria-label="range"><button data-range="30" class="active">30D</button><button data-range="60">60D</button><button data-range="all">ALL</button></div>
+</div>
 <section class="hero">
-  <div class="hero-main">
-    <div>
-      <h1>Sports Log</h1>
-      <p>把 COROS MCP 连接到的健康、恢复、训练负荷、跑力评估、运动记录和训练计划集中放在一个页面里。每天 23:00 更新当天数据，周/月自动汇总。</p>
+  <div class="stage">
+    <canvas id="heroCanvas"></canvas>
+    <div class="hero-copy">
+      <div class="kicker"><span class="chip" id="windowChip">--</span><span class="chip" id="loadChip">--</span><span class="chip" id="raceChip">--</span></div>
+      <div class="headline"><strong id="heroDistance">--</strong><span id="heroSub">--</span></div>
     </div>
-    <div class="foot">当前窗口：%s 至 %s · 更新时间：%s · <span class="%s">%s</span></div>
   </div>
-  <aside class="hero-side">
-    <span class="pill">%s · %s kg · %s cm</span>
-    <div><strong style="font-size:52px">%s%%</strong><br><span>%s · 完全恢复约 %s</span></div>
-    <div>VO2max <strong style="font-size:34px">%s</strong> 阈值配速 %s</div>
+  <aside class="side">
+    <section class="ring-card">
+      <div class="ring"><svg viewBox="0 0 160 160"><circle class="bg" cx="80" cy="80" r="62"></circle><circle class="fg" id="recoveryRing" cx="80" cy="80" r="62"></circle></svg><b id="recoveryText">--</b></div>
+      <div><h2>Recovery</h2><div class="big" id="recoveryLevel">--</div><span class="muted" id="recoveryTime">--</span></div>
+    </section>
+    <section class="ring-card">
+      <div class="ring"><svg viewBox="0 0 160 160"><circle class="bg" cx="80" cy="80" r="62"></circle><circle class="fg" id="vo2Ring" cx="80" cy="80" r="62"></circle></svg><b id="vo2Text">--</b></div>
+      <div><h2>Running</h2><div class="big" id="thresholdText">--</div><span class="muted">VO2max / Threshold</span></div>
+    </section>
   </aside>
 </section>
-<section class="stats">%s</section>
+<section class="metrics" id="metrics"></section>
 <section class="grid">
-  <section class="panel"><h2>比赛预测</h2><div class="race">%s</div></section>
-  <section class="panel"><h2>设备</h2><ul class="list">%s</ul></section>
-  <section class="panel"><h2>训练计划</h2><ul class="list">%s</ul></section>
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
-  %s
+  <section class="panel"><h2>Training Load <small id="rangeLabel"></small></h2><div class="canvas-wrap"><canvas id="distanceChart"></canvas></div></section>
+  <section class="panel"><h2>Recent Activities <small id="activityCount"></small></h2><div class="filters" id="filters"></div><div class="activity-list" id="activityList"></div></section>
+  <section class="panel"><h2>Recovery Signals</h2><div class="canvas-wrap"><canvas id="healthChart"></canvas></div></section>
+  <section class="panel"><h2>Run Heat</h2><div class="heat" id="heatmap"></div></section>
+  <section class="panel wide"><h2>Weeks</h2><div class="summary-row" id="weeklyCards"></div></section>
+  <section class="panel"><h2>Predictions</h2><div class="preds" id="preds"></div></section>
+  <section class="panel"><h2>Next Up</h2><div class="trio" id="nextUp"></div></section>
 </section>
-<p class="foot">汇总规则参考 COROS 训练负荷/训练状态、ACSM/CDC 成人活动建议、TrainingPeaks TSB 负荷平衡思路。这里用于个人训练观察，不构成医疗建议。</p>
-<div class="sources">%s</div>
 </main>
+<aside class="detail-drawer" id="drawer"><button id="closeDrawer">×</button><h2 id="drawerTitle">Activity</h2><div class="detail-stats" id="drawerStats"></div></aside>
+<script type="application/json" id="payload">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('payload').textContent);
+let range = 30;
+let sportFilter = 'All';
+const $ = (q) => document.querySelector(q);
+const fmt = (v, suffix='') => (v === null || v === undefined || v === '') ? '--' : `${v}${suffix}`;
+const sum = (arr, fn) => arr.reduce((a, x) => a + (+fn(x) || 0), 0);
+const avg = (arr, fn) => {
+  const vals = arr.map(fn).filter(v => Number.isFinite(+v));
+  return vals.length ? vals.reduce((a,b)=>a + +b, 0) / vals.length : null;
+};
+const last = (arr) => arr[arr.length - 1] || {};
+function rows(){ return range === 'all' ? DATA.daily : DATA.daily.slice(-Number(range)); }
+function acts(){ const start = rows()[0]?.date || ''; return DATA.activities.filter(a => (!start || a.date >= start) && (sportFilter === 'All' || a.sport === sportFilter)); }
+function resizeCanvas(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w:rect.width,h:rect.height};
+}
+function drawHero(){
+  const canvas = $('#heroCanvas'); const {ctx,w,h}=resizeCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  const a = rows(); const max = Math.max(...a.map(d=>d.hrv || 0), 1);
+  ctx.lineWidth = 16; ctx.lineCap = 'round';
+  for(let i=0;i<a.length;i++){
+    const x = 26 + i * ((w-52)/Math.max(1,a.length-1));
+    const y = h - 48 - ((a[i].hrv || 0)/max) * (h-120);
+    ctx.strokeStyle = i % 3 === 0 ? '#15936b55' : i % 3 === 1 ? '#de6b4d45' : '#1d8ea545';
+    ctx.beginPath(); ctx.moveTo(x, h-34); ctx.lineTo(x, y); ctx.stroke();
+  }
+  const actsByDate = new Map();
+  DATA.activities.forEach(a => actsByDate.set(a.date, (actsByDate.get(a.date)||0) + (a.distance_km||0)));
+  ctx.lineWidth = 4; ctx.strokeStyle = '#17211d'; ctx.beginPath();
+  a.forEach((d,i)=>{
+    const x = 26 + i * ((w-52)/Math.max(1,a.length-1));
+    const km = actsByDate.get(d.date) || 0;
+    const y = h - 56 - Math.min(1, km/14) * (h-130);
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.stroke();
+}
+function drawBars(canvasId, a, barKey, lineKey){
+  const canvas = $(canvasId); const {ctx,w,h}=resizeCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  const pad = {l:34,r:16,t:16,b:34};
+  const bw = (w-pad.l-pad.r)/Math.max(1,a.length);
+  const maxBar = Math.max(...a.map(d=>d[barKey] || 0), 1);
+  const lineVals = a.map(d=>d[lineKey]).filter(v=>Number.isFinite(+v));
+  const minLine = Math.min(...lineVals, 0), maxLine = Math.max(...lineVals, 1), span = maxLine-minLine || 1;
+  ctx.strokeStyle = '#dedbd0'; ctx.lineWidth = 1;
+  for(let i=0;i<4;i++){ const y=pad.t+i*(h-pad.t-pad.b)/3; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); }
+  a.forEach((d,i)=>{
+    const x = pad.l + i*bw + 2;
+    const bh = ((d[barKey] || 0)/maxBar)*(h-pad.t-pad.b);
+    ctx.fillStyle = d[barKey] ? '#15936b' : '#dedbd0';
+    ctx.fillRect(x, h-pad.b-bh, Math.max(2,bw-4), bh);
+  });
+  ctx.strokeStyle = '#de6b4d'; ctx.lineWidth = 3; ctx.beginPath();
+  a.forEach((d,i)=>{
+    const v = Number(d[lineKey]); if(!Number.isFinite(v)) return;
+    const x = pad.l + i*bw + bw/2;
+    const y = h-pad.b-((v-minLine)/span)*(h-pad.t-pad.b);
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = '#69756f'; ctx.font = '11px system-ui';
+  ctx.fillText(a[0]?.date?.slice(5) || '', pad.l, h-10);
+  ctx.fillText(last(a)?.date?.slice(5) || '', w-54, h-10);
+}
+function drawHealth(){
+  const a = rows(); const canvas = $('#healthChart'); const {ctx,w,h}=resizeCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  const pad={l:32,r:12,t:16,b:28}; const keys=[['hrv','#1d8ea5'],['rhr','#de6b4d'],['load_ratio','#d99b2b']];
+  ctx.strokeStyle='#dedbd0'; for(let i=0;i<4;i++){const y=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();}
+  keys.forEach(([key,color])=>{
+    const vals=a.map(d=>+d[key]).filter(Number.isFinite); if(!vals.length) return;
+    const min=Math.min(...vals), max=Math.max(...vals), span=max-min||1;
+    ctx.strokeStyle=color; ctx.lineWidth=3; ctx.beginPath();
+    a.forEach((d,i)=>{ const v=+d[key]; if(!Number.isFinite(v)) return; const x=pad.l+i*((w-pad.l-pad.r)/Math.max(1,a.length-1)); const y=h-pad.b-((v-min)/span)*(h-pad.t-pad.b); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.stroke();
+  });
+  const labels=[['HRV','#1d8ea5'],['RHR','#de6b4d'],['Load','#d99b2b']];
+  labels.forEach((l,i)=>{ctx.fillStyle=l[1];ctx.fillRect(pad.l+i*72,8,16,4);ctx.fillStyle='#69756f';ctx.fillText(l[0],pad.l+22+i*72,12);});
+}
+function ring(id, value, max, color){
+  const c=$(id); const r=62; const circ=2*Math.PI*r;
+  c.style.strokeDasharray = `${Math.max(0,Math.min(1,value/max))*circ} ${circ}`;
+  c.style.stroke = color;
+}
+function renderMetrics(){
+  const a=rows(), day=last(DATA.daily), activityRows=acts();
+  const dist=sum(activityRows,x=>x.distance_km).toFixed(1);
+  const mins=Math.round(sum(activityRows,x=>x.duration_min));
+  const hrv=avg(a,x=>x.hrv); const rhr=avg(a,x=>x.rhr); const sleep=avg(a,x=>x.sleep_min);
+  const items=[
+    ['Distance', `${dist} km`, `${activityRows.length} sessions`, activityRows.map(x=>x.distance_km||0)],
+    ['Time', `${mins} min`, `${Math.round(mins/60)}h moving`, activityRows.map(x=>x.duration_min||0)],
+    ['HRV', hrv?`${Math.round(hrv)} ms`:'--', `RHR ${rhr?Math.round(rhr):'--'}`, a.map(x=>x.hrv||0)],
+    ['Sleep', sleep?`${(sleep/60).toFixed(1)} h`:'--', `last ${fmt(day.sleep_min ? (day.sleep_min/60).toFixed(1) : null,'h')}`, a.map(x=>x.sleep_min||0)]
+  ];
+  $('#metrics').innerHTML = items.map((it,idx)=>`<section class="metric"><span>${it[0]}</span><b>${it[1]}</b><span>${it[2]}</span><canvas class="spark" data-idx="${idx}"></canvas></section>`).join('');
+  document.querySelectorAll('.spark').forEach((c,i)=>drawSpark(c,items[i][3]));
+}
+function drawSpark(canvas, vals){
+  const {ctx,w,h}=resizeCanvas(canvas); ctx.clearRect(0,0,w,h);
+  const max=Math.max(...vals,1), min=Math.min(...vals,0), span=max-min||1;
+  ctx.strokeStyle='#17211d'; ctx.lineWidth=2; ctx.beginPath();
+  vals.forEach((v,i)=>{const x=i*(w/Math.max(1,vals.length-1)); const y=h-4-((v-min)/span)*(h-8); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.stroke();
+}
+function renderActivities(){
+  const allSports=['All', ...new Set(DATA.activities.map(a=>a.sport).filter(Boolean))];
+  $('#filters').innerHTML=allSports.map(s=>`<button class="${s===sportFilter?'active':''}" data-sport="${s}">${s}</button>`).join('');
+  $('#filters').querySelectorAll('button').forEach(b=>b.onclick=()=>{sportFilter=b.dataset.sport; render();});
+  const list=acts().slice(0,18); $('#activityCount').textContent=`${list.length}`;
+  $('#activityList').innerHTML=list.length ? list.map((a,i)=>`<article class="activity" data-i="${i}"><div class="badge">${Math.round(a.distance_km||0)}</div><div><h3>${a.location || a.sport}</h3><p>${a.date} · ${a.sport} · ${a.pace}</p></div><div class="num">${fmt(a.training_load,' TL')}</div></article>`).join('') : '<div class="empty">No activities</div>';
+  $('#activityList').querySelectorAll('.activity').forEach((el,i)=>el.onclick=()=>openDrawer(list[i]));
+}
+function openDrawer(a){
+  $('#drawerTitle').textContent=a.location || a.sport;
+  $('#drawerStats').innerHTML=[
+    ['Distance',fmt(a.distance_km,' km')],['Pace',fmt(a.pace)],['Time',fmt(a.duration)],
+    ['Avg HR',fmt(a.avg_hr,' bpm')],['Load',fmt(a.training_load,' TL')],['Power',fmt(a.avg_power,' W')]
+  ].map(x=>`<div><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+  $('#drawer').classList.add('show');
+}
+function renderHeat(){
+  const map=new Map(); DATA.activities.forEach(a=>map.set(a.date,(map.get(a.date)||0)+(a.distance_km||0)));
+  const a=rows(); $('#heatmap').innerHTML=a.map(d=>{const km=map.get(d.date)||0; const lvl=km>12?4:km>8?3:km>3?2:km>0?1:0; return `<div class="cell" data-lvl="${lvl}" title="${d.date} · ${km.toFixed(1)} km"></div>`}).join('');
+}
+function renderWeeks(){
+  const weeks=(DATA.summaries.weekly||[]).slice(0,5);
+  $('#weeklyCards').innerHTML=weeks.map(w=>`<div class="summary"><span>${w.key}</span><b>${fmt(w.distance_km,' km')}</b><span>${w.activities} runs · ${w.exercise_min} min</span><div class="progress"><i style="width:${Math.min(100,(w.distance_km||0)/65*100)}%"></i></div></div>`).join('');
+}
+function renderPreds(){
+  const p=DATA.fitness.race_predictions||{};
+  $('#preds').innerHTML=Object.entries(p).map(([k,v])=>`<div class="pred"><span>${k}</span><b>${v}</b></div>`).join('');
+}
+function renderNext(){
+  const s=DATA.schedule[0]||{}, w=DATA.workouts[0]||{}, f=DATA.fitness||{};
+  const tiles=[['Plan',s.name||'--',fmt(s.distance_km,' km')],['Workout',w.name||'--',fmt(Math.round((w.estimated_time_seconds||0)/60),' min')],['Level',fmt(f.running_level),fmt(f.threshold_pace)]];
+  $('#nextUp').innerHTML=tiles.map(t=>`<div class="tile"><span>${t[0]}</span><b>${t[1]}</b><span>${t[2]}</span></div>`).join('');
+}
+function renderHero(){
+  const a=rows(), activityRows=acts(), day=last(DATA.daily), meta=DATA.meta||{};
+  const dist=sum(activityRows,x=>x.distance_km).toFixed(1);
+  $('#updated').textContent = meta.generated_at || '';
+  $('#windowChip').textContent = `${a[0]?.date || '--'} → ${last(a)?.date || '--'}`;
+  $('#loadChip').textContent = `Load ${fmt(day.load_ratio)}`;
+  $('#raceChip').textContent = `VO2 ${fmt(DATA.fitness.vo2max)}`;
+  $('#heroDistance').textContent = `${dist} km`;
+  $('#heroSub').textContent = `${activityRows.length} sessions · ${Math.round(sum(activityRows,x=>x.duration_min))} moving minutes`;
+  $('#recoveryText').textContent = fmt(DATA.recovery.recovery_percent,'%');
+  $('#recoveryLevel').textContent = DATA.recovery.level || '--';
+  $('#recoveryTime').textContent = `full in ${DATA.recovery.estimated_full_recovery || '--'}`;
+  $('#vo2Text').textContent = fmt(DATA.fitness.vo2max);
+  $('#thresholdText').textContent = DATA.fitness.threshold_pace || '--';
+  ring('#recoveryRing', DATA.recovery.recovery_percent || 0, 100, '#15936b');
+  ring('#vo2Ring', DATA.fitness.vo2max || 0, 70, '#1d8ea5');
+  drawHero();
+}
+function render(){
+  renderHero(); renderMetrics(); renderActivities(); renderHeat(); renderWeeks(); renderPreds(); renderNext();
+  $('#rangeLabel').textContent = range === 'all' ? 'all data' : `${range} days`;
+  drawBars('#distanceChart', rows().map(d=>({...d, km: DATA.activities.filter(a=>a.date===d.date).reduce((s,a)=>s+(a.distance_km||0),0)})), 'km', 'load_ratio');
+  drawHealth();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');range=b.dataset.range;render();});
+$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('show');
+window.addEventListener('resize', render);
+render();
+</script>
 </body>
-</html>""" % (
-        esc(meta.get("window_start")),
-        esc(meta.get("window_end")),
-        esc(meta.get("generated_at")),
-        status_class,
-        esc(meta.get("automation_status")),
-        esc(profile.get("nickname")),
-        esc(profile.get("weight_kg")),
-        esc(profile.get("height_cm")),
-        esc(recovery.get("recovery_percent")),
-        esc(recovery.get("level")),
-        esc(recovery.get("estimated_full_recovery")),
-        esc(fitness.get("vo2max")),
-        esc(fitness.get("threshold_pace")),
-        "".join(
-            [
-                stat_card("今日步数", fmt(day.get("steps")), "压力 %s · 睡眠分 %s" % (fmt(day.get("stress")), fmt(day.get("sleep_score")))),
-                stat_card("30天跑量", "%.1f km" % total_distance, "%s 次运动 · %s min" % (len(acts), total_minutes)),
-                stat_card("HRV / 静息心率", "%s ms" % fmt(day.get("hrv")), "%s · RHR %s bpm" % (fmt(day.get("hrv_status")), fmt(day.get("rhr")))),
-                stat_card("训练负荷比", fmt(day.get("load_ratio")), "%s · %s/%s" % (fmt(day.get("load_status")), fmt(day.get("short_load")), fmt(day.get("long_load")))),
-            ]
-        ),
-        "".join('<div><span>%s</span><b>%s</b></div>' % (esc(k), esc(v)) for k, v in race.items()),
-        devices,
-        schedule,
-        workout_panel(data.get("workouts", [])),
-        cache_panel(data),
-        bars(recent, "steps", "步数趋势"),
-        bars(recent, "sleep_score", "睡眠分趋势", scale=100),
-        trend_svg(recent, "hrv", "HRV 趋势", "#2766a6"),
-        trend_svg(recent, "load_ratio", "训练负荷比", "#b07a21"),
-        summary_table("周汇总", data.get("summaries", {}).get("weekly", [])),
-        summary_table("月汇总", data.get("summaries", {}).get("monthly", [])),
-        activity_table(acts),
-        "".join('<a href="%s">%s</a>' % (esc(r.get("url")), esc(r.get("name"))) for r in meta.get("references", [])),
-    )
+</html>""".replace("__DATA__", json_blob)
     return html_doc
 
 
