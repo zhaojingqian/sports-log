@@ -4,4 +4,5 @@ logs/*.log
 .env
 .venv/
 data/*.bak
+data/dashboard.json
 .refresh-token
