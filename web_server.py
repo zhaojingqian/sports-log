@@ -8,6 +8,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
@@ -21,12 +22,15 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
 PYTHON_BIN = os.environ.get("SPORTS_LOG_PYTHON", sys.executable)
 REFRESH_TIMEOUT = int(os.environ.get("SPORTS_LOG_REFRESH_TIMEOUT", "600"))
+SAFE_REFRESH_COOLDOWN_SECONDS = int(os.environ.get("SPORTS_LOG_SAFE_REFRESH_COOLDOWN", "120"))
 REFRESH_RUN_LOCK = threading.Lock()
 REFRESH_STATE_LOCK = threading.Lock()
+LAST_SAFE_REFRESH_AT = 0.0
 REFRESH_STATUS = {
     "running": False,
     "ok": None,
     "code": None,
+    "mode": None,
     "started_at": None,
     "finished_at": None,
     "message": "",
@@ -81,18 +85,34 @@ def refresh_status_snapshot():
         return dict(REFRESH_STATUS)
 
 
-def run_full_refresh():
+def public_refresh_status_snapshot():
+    status = refresh_status_snapshot()
+    return {
+        "running": status.get("running"),
+        "ok": status.get("ok"),
+        "code": status.get("code"),
+        "mode": status.get("mode"),
+        "started_at": status.get("started_at"),
+        "finished_at": status.get("finished_at"),
+    }
+
+
+def refresh_weeks(env_name, default):
+    try:
+        weeks_value = int(os.environ.get(env_name, str(default)))
+    except ValueError:
+        weeks_value = default
+    return str(max(1, min(weeks_value, 52)))
+
+
+def run_refresh(mode, mobile_auth, weeks_env, default_weeks):
     code = None
     ok = False
     message = ""
     try:
-        try:
-            weeks_value = int(os.environ.get("SPORTS_LOG_ALL_WEEKS", "52"))
-        except ValueError:
-            weeks_value = 52
-        weeks = str(max(1, min(weeks_value, 52)))
+        weeks = refresh_weeks(weeks_env, default_weeks)
         env = os.environ.copy()
-        env["SPORTS_LOG_ALLOW_MOBILE_AUTH"] = "1"
+        env["SPORTS_LOG_ALLOW_MOBILE_AUTH"] = "1" if mobile_auth else "0"
         env["SPORTS_LOG_WEEKS"] = weeks
         proc = subprocess.run(
             [PYTHON_BIN, REFRESH_SCRIPT],
@@ -105,7 +125,7 @@ def run_full_refresh():
         )
         code = proc.returncode
         ok = code == 0
-        message = text_tail(proc.stdout) or ("refreshed %s weeks" % weeks)
+        message = text_tail(proc.stdout) or ("%s refresh completed for %s weeks" % (mode, weeks))
     except subprocess.TimeoutExpired as exc:
         code = 124
         message = text_tail(text_tail(exc.stdout) + "\nfull refresh timed out")
@@ -119,11 +139,20 @@ def run_full_refresh():
                     "running": False,
                     "ok": ok,
                     "code": code,
+                    "mode": mode,
                     "finished_at": timestamp(),
                     "message": message,
                 }
             )
         REFRESH_RUN_LOCK.release()
+
+
+def run_full_refresh():
+    run_refresh("full", True, "SPORTS_LOG_ALL_WEEKS", 52)
+
+
+def run_safe_refresh():
+    run_refresh("safe", False, "SPORTS_LOG_SAFE_WEEKS", 8)
 
 
 def start_full_refresh():
@@ -135,6 +164,7 @@ def start_full_refresh():
                 "running": True,
                 "ok": None,
                 "code": None,
+                "mode": "full",
                 "started_at": timestamp(),
                 "finished_at": None,
                 "message": "mobile auth full refresh running",
@@ -144,6 +174,33 @@ def start_full_refresh():
     worker.daemon = True
     worker.start()
     return True, refresh_status_snapshot()
+
+
+def start_safe_refresh():
+    global LAST_SAFE_REFRESH_AT
+    now = time.time()
+    if not REFRESH_RUN_LOCK.acquire(False):
+        return False, "already_running", public_refresh_status_snapshot()
+    if now - LAST_SAFE_REFRESH_AT < SAFE_REFRESH_COOLDOWN_SECONDS:
+        REFRESH_RUN_LOCK.release()
+        return False, "cooldown", public_refresh_status_snapshot()
+    LAST_SAFE_REFRESH_AT = now
+    with REFRESH_STATE_LOCK:
+        REFRESH_STATUS.update(
+            {
+                "running": True,
+                "ok": None,
+                "code": None,
+                "mode": "safe",
+                "started_at": timestamp(),
+                "finished_at": None,
+                "message": "safe refresh running",
+            }
+        )
+    worker = threading.Thread(target=run_safe_refresh, name="sports-log-safe-refresh")
+    worker.daemon = True
+    worker.start()
+    return True, "started", public_refresh_status_snapshot()
 
 
 def esc(value):
@@ -825,7 +882,7 @@ def build_home():
     <section class="panel" id="load"><div class="panel-head"><div><h2>距离趋势</h2><small>每日距离柱状图 + 7日移动平均线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>每日距离</span><span><i style="background:var(--green)"></i>7日均线</span></div></div><div class="chart"><canvas id="distanceChart"></canvas></div></section>
     <aside class="side-stack">
       <section class="panel status"><div class="gauge"><svg viewBox="0 0 160 160"><circle class="bg" cx="80" cy="80" r="62"></circle><circle class="fg" id="statusRing" cx="80" cy="80" r="62"></circle></svg><b id="statusScore">--</b></div><div><h3 id="statusTitle">--</h3><p id="statusText">--</p></div></section>
-      <section class="panel" id="recovery"><div class="panel-head"><div><h2>跑步能力变化</h2><small>VO2max / load / recovery</small></div></div><div class="chart short"><canvas id="abilityChart"></canvas></div></section>
+      <section class="panel" id="recovery"><div class="panel-head"><div><h2>跑步能力变化</h2><small>VO2max / HRV / Load 日线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>VO2</span><span><i style="background:var(--green)"></i>HRV</span><span><i style="background:var(--orange)"></i>Load</span></div></div><div class="chart short"><canvas id="abilityChart"></canvas></div></section>
       <section class="panel"><h2>Coach Summary</h2><div class="coach-list" id="coachList"></div></section>
     </aside>
   </section>
@@ -855,9 +912,13 @@ function getAdminToken(force=false){let token=force?'':localStorage.getItem('spo
 async function refreshJson(path,token,options={}){const res=await fetch(path,{...options,cache:'no-store',headers:{...(options.headers||{}),'X-Refresh-Token':token}});const body=await res.json().catch(()=>({}));if(res.status===401){localStorage.removeItem('sportsLogAdminToken');throw new Error('管理 token 无效')}if(!res.ok)throw new Error(body.error||body.message||`HTTP ${res.status}`);return body}
 async function pollFullRefresh(token){for(let i=0;i<300;i++){const body=await refreshJson('refresh-status',token);const st=body.status||{};if(!st.running){if(st.ok){setPullAllState('done','OK','全量数据已更新');await sleep(700);location.reload();return}throw new Error(st.message||'全量拉取失败')}await sleep(2000)}throw new Error('全量拉取超时，请稍后查看服务日志')}
 async function startFullRefresh(){let token=getAdminToken();if(!token)return;if(!confirm('将用 COROS mobile auth 拉取最多 52 周数据，可能让手机 App 重新登录。继续？'))return;setPullAllState('busy','RUN','全量数据拉取中');try{await refreshJson('refresh-all',token,{method:'POST'});await pollFullRefresh(token)}catch(err){setPullAllState('err','ERR',err.message);alert(err.message);setTimeout(()=>setPullAllState('', 'ALL'),2400)}}
+async function safeRefreshJson(path,options={}){const res=await fetch(path,{...options,cache:'no-store'});const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body.error||`HTTP ${res.status}`);return body}
+async function pollSafeRefresh(){for(let i=0;i<180;i++){const body=await safeRefreshJson('refresh-safe-status');const st=body.status||{};if(!st.running){if(st.ok){await sleep(500);location.reload()}return}await sleep(2000)}}
+async function startSafeRefresh(){try{const body=await safeRefreshJson('refresh-safe',{method:'POST'});const st=body.status||{};if(body.started||st.running)pollSafeRefresh()}catch(err){console.debug('safe refresh skipped',err)}}
 const byDate=new Map();DATA.activities.forEach(a=>{const x=byDate.get(a.date)||{km:0,min:0,load:0,cal:0,elev:0,count:0,acts:[]};x.km+=+(a.distance_km||0);x.min+=+(a.duration_min||0);x.load+=+(a.training_load||0);x.cal+=+(a.calories||0);x.elev+=+(a.elevation_gain||0);x.count++;x.acts.push(a);byDate.set(a.date,x)});
 function rows(){return range==='all'?DATA.daily:DATA.daily.slice(-Number(range))}
-function days(src=rows()){return src.map(d=>{const a=byDate.get(d.date)||{};return {...d,km:a.km||0,min:a.min||0,load:a.load||0,cal:a.cal||0,elev:a.elev||0,count:a.count||0,acts:a.acts||[]}})}
+function carryMetricRows(list){const fields=['hrv','hrv_baseline','rhr','load_ratio','load_status','short_load','long_load','tired_rate','vo2max','lthr','ltsp','stamina_level','stamina_level_7d'],last={},out=list.map(d=>{const row={...d};fields.forEach(k=>{const v=row[k];if(v===null||v===undefined||v===''){if(last[k]!==undefined)row[k]=last[k]}else last[k]=v});return row});fields.forEach(k=>{const first=out.find(r=>r[k]!==null&&r[k]!==undefined&&r[k]!=='')?.[k];if(first===undefined)return;for(const r of out){if(r[k]===null||r[k]===undefined||r[k]==='')r[k]=first;else break}});return out}
+function days(src=rows()){return carryMetricRows(src.map(d=>{const a=byDate.get(d.date)||{};return {...d,km:a.km||0,min:a.min||0,load:a.load||0,cal:a.cal||0,elev:a.elev||0,count:a.count||0,acts:a.acts||[]}}))}
 function acts(){const start=rows()[0]?.date||'';return DATA.activities.filter(a=>(!start||a.date>=start)&&(sportFilter==='All'||a.sport===sportFilter))}
 function canvas(el){const dpr=devicePixelRatio||1,r=el.getBoundingClientRect();el.width=Math.max(1,r.width*dpr);el.height=Math.max(1,r.height*dpr);const ctx=el.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height}}
 function nice(v){if(!v||v<=0)return 1;const p=10**Math.floor(Math.log10(v)),n=v/p;return(n<=2?2:n<=5?5:10)*p}
@@ -880,16 +941,19 @@ function drawDistance(){
  hover(c,pts,p=>`<b>${p.row.date}</b><span><em>每日距离</em><strong>${p.row.km.toFixed(1)} km</strong></span><span><em>7日均线</em><strong>${p.avg.toFixed(1)} km</strong></span><span><em>训练负荷</em><strong>${fmt(p.row.load,' TL')}</strong></span>`);
 }
 function drawAbility(){
- const a=days(),c=$('#abilityChart'),{ctx,w,h}=canvas(c),p={l:42,r:16,t:18,b:30},iw=w-p.l-p.r,topH=(h-p.t-p.b)*.68,stripY=p.t+topH+18,stripH=34,vo2=a.map(x=>+x.vo2max).filter(v=>Number.isFinite(v)&&v>20),lo=Math.max(30,Math.min(...vo2,58)-8),hi=Math.min(75,Math.max(...vo2,58)+8),sp=hi-lo||1,pts=[];
- ctx.clearRect(0,0,w,h);ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.fillStyle=C.faint;ctx.font='11px Geist, system-ui';ctx.textAlign='right';
- for(let i=0;i<4;i++){const y=p.t+i*topH/3,val=hi-(hi-lo)*i/3;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(Math.round(val),p.l-8,y+4)}
- ctx.fillStyle='#f6f9ff';ctx.fillRect(p.l,stripY,iw,stripH);
- a.forEach((d,i)=>{const x=p.l+i*iw/Math.max(1,a.length-1),bw=Math.max(3,iw/Math.max(12,a.length)*.55),load=+(d.load_ratio||0);ctx.fillStyle=load>1.25?C.red:load>=.85?C.green:C.faint;roundRect(ctx,x-bw/2,stripY+stripH-(Math.min(1.5,load)/1.5)*stripH,bw,Math.max(2,(Math.min(1.5,load)/1.5)*stripH),3);ctx.fill()});
- ctx.strokeStyle=C.blue;ctx.lineWidth=2.8;ctx.beginPath();let started=false;a.forEach((d,i)=>{const v=+d.vo2max;if(!Number.isFinite(v)||v<=20){started=false;return}const x=p.l+i*iw/Math.max(1,a.length-1),y=p.t+topH-((v-lo)/sp)*topH;pts.push({x,y,row:d});started?ctx.lineTo(x,y):ctx.moveTo(x,y);started=true});ctx.stroke();
- if(pts.length){const end=pts[pts.length-1];ctx.fillStyle=C.blue;ctx.beginPath();ctx.arc(end.x,end.y,4,0,Math.PI*2);ctx.fill();ctx.fillText('VO2',Math.min(w-28,end.x+22),end.y-8)}
- ctx.fillStyle=C.faint;ctx.textAlign='center';for(let i=0;i<Math.min(4,a.length);i++){const idx=Math.round(i*(a.length-1)/Math.max(1,Math.min(4,a.length)-1));ctx.fillText(a[idx].date.slice(5),p.l+idx*iw/Math.max(1,a.length-1),h-10)}
- ctx.textAlign='left';ctx.fillStyle=C.muted;ctx.fillText('load intensity',p.l,stripY-5);
- hover(c,pts,p=>`<b>${p.row.date}</b><span><em>VO2max</em><strong>${fmt(p.row.vo2max)}</strong></span><span><em>Load ratio</em><strong>${fmt(p.row.load_ratio)}</strong></span><span><em>HRV</em><strong>${fmt(p.row.hrv,' ms')}</strong></span>`);
+ const a=days(),c=$('#abilityChart'),{ctx,w,h}=canvas(c),p={l:58,r:18,t:14,b:30},iw=w-p.l-p.r,lanes=[{key:'vo2max',label:'VO2',unit:'',color:C.blue,min:30,max:75,fmt:v=>Math.round(v)},{key:'hrv',label:'HRV',unit:' ms',color:C.green,fmt:v=>Math.round(v)},{key:'load_ratio',label:'LOAD',unit:'',color:C.orange,min:.7,max:1.4,fmt:v=>Number(v).toFixed(2)}],gap=10,laneH=(h-p.t-p.b-gap*(lanes.length-1))/lanes.length,pts=[];
+ ctx.clearRect(0,0,w,h);ctx.font='11px Geist, system-ui';ctx.lineCap='round';ctx.lineJoin='round';
+ lanes.forEach((lane,li)=>{const y0=p.t+li*(laneH+gap),vals=a.map(d=>+d[lane.key]).filter(v=>Number.isFinite(v)&&v>0),fallback=lane.key==='load_ratio'?[1]:[50],raw=vals.length?vals:fallback;let lo=lane.min??Math.min(...raw),hi=lane.max??Math.max(...raw),pad=(hi-lo||1)*.18;lo=lane.min??lo-pad;hi=lane.max??hi+pad;if(hi===lo)hi=lo+1;const sp=hi-lo,den=Math.max(1,a.length-1);
+  ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.setLineDash([]);for(let g=0;g<3;g++){const y=y0+g*laneH/2;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke()}
+  if(lane.key==='load_ratio'){const by=y0+laneH-((1-lo)/sp)*laneH;ctx.strokeStyle='#cbd5e1';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(p.l,by);ctx.lineTo(w-p.r,by);ctx.stroke();ctx.setLineDash([])}
+  const line=[];a.forEach((d,i)=>{const v=+d[lane.key];if(!Number.isFinite(v)||v<=0)return;const x=p.l+i*iw/den,y=y0+laneH-((v-lo)/sp)*laneH;line.push({x,y,row:d,value:v,lane});pts.push({x,y,row:d})});
+  if(line.length>1){const grad=ctx.createLinearGradient(0,y0,0,y0+laneH);grad.addColorStop(0,lane.color+'22');grad.addColorStop(1,lane.color+'00');ctx.beginPath();line.forEach((pt,i)=>i?ctx.lineTo(pt.x,pt.y):ctx.moveTo(pt.x,pt.y));ctx.lineTo(line[line.length-1].x,y0+laneH);ctx.lineTo(line[0].x,y0+laneH);ctx.closePath();ctx.fillStyle=grad;ctx.fill()}
+  ctx.strokeStyle=lane.color;ctx.lineWidth=2.5;ctx.beginPath();line.forEach((pt,i)=>i?ctx.lineTo(pt.x,pt.y):ctx.moveTo(pt.x,pt.y));ctx.stroke();
+  const latest=line[line.length-1];ctx.fillStyle=lane.color;if(latest){ctx.beginPath();ctx.arc(latest.x,latest.y,3.8,0,Math.PI*2);ctx.fill()}
+  ctx.textAlign='left';ctx.fillStyle=C.muted;ctx.font='10px Geist, system-ui';ctx.fillText(lane.label,0,y0+laneH/2+4);ctx.font='12px JetBrains Mono, monospace';ctx.fillStyle=C.ink;ctx.fillText(latest?lane.fmt(latest.value)+lane.unit:'--',27,y0+laneH/2+4);
+ });
+ ctx.fillStyle=C.faint;ctx.font='11px Geist, system-ui';ctx.textAlign='center';for(let i=0;i<Math.min(4,a.length);i++){const idx=Math.round(i*(a.length-1)/Math.max(1,Math.min(4,a.length)-1));ctx.fillText(a[idx].date.slice(5),p.l+idx*iw/Math.max(1,a.length-1),h-10)}
+ hover(c,pts,p=>`<b>${p.row.date}</b><span><em>VO2max</em><strong>${fmt(p.row.vo2max)}</strong></span><span><em>HRV</em><strong>${fmt(p.row.hrv,' ms')}</strong></span><span><em>Load ratio</em><strong>${fmt(p.row.load_ratio)}</strong></span>`);
 }
 function drawPace(){
  const list=acts().slice().reverse().filter(a=>paceSec(a.pace)).map(a=>({...a,paceSec:paceSec(a.pace)})),c=$('#paceChart'),{ctx,w,h}=canvas(c),p={l:48,r:16,t:18,b:34},iw=w-p.l-p.r,ih=h-p.t-p.b;if(!list.length)return;const vals=list.map(x=>x.paceSec),lo=Math.min(...vals)-15,hi=Math.max(...vals)+15,sp=hi-lo||1,avg7=ma(list,'paceSec',7),pts=[];
@@ -913,7 +977,7 @@ function renderActivities(){const sports=['All',...new Set(DATA.activities.map(a
 function openDrawer(a){$('#drawerTitle').textContent=a.location||a.sport;$('#drawerStats').innerHTML=[['Distance',fmt(a.distance_km,' km')],['Pace',fmt(a.pace)],['Time',fmt(a.duration)],['Avg HR',fmt(a.avg_hr,' bpm')],['Load',fmt(a.training_load,' TL')],['Power',fmt(a.avg_power,' W')]].map(x=>`<div><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');$('#drawer').classList.add('show')}
 function renderAchievements(){const a=days(),activity=acts(),total=sum(activity,x=>x.distance_km),cal=sum(activity,x=>x.calories),elev=sum(activity,x=>x.elevation_gain);$('#achievements').innerHTML=[['坚持达人',`完成跑步 ${activity.length} 次`,C.blue,'RUN'],['距离达人',`累计 ${total.toFixed(1)} 公里`,C.green,'KM'],['燃脂高手',`累计消耗 ${Math.round(cal)} 千卡`,C.red,'K'],['攀登者',`累计爬升 ${Math.round(elev)} 米`,C.orange,'UP']].map(x=>`<div class="medal" style="--color:${x[2]};--tone:${x[2]}1a"><i>${x[3]}</i><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')}
 function render(){const a=days();$('#rangeTitle').textContent=range==='all'?'全部':`${range}天`;$('#dateLabel').textContent=`${a[0]?.date||'--'} – ${last(a).date||'--'}`;renderCards();renderStatus();renderActivities();renderAchievements();drawDistance();drawAbility();drawPace();drawWeeks();drawSleep()}
-$$('.seg button').forEach(b=>b.onclick=()=>{$$('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');range=b.dataset.range;render()});$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('show');const pullAll=$('#pullAllBtn');if(pullAll)pullAll.onclick=startFullRefresh;addEventListener('resize',render);render();
+$$('.seg button').forEach(b=>b.onclick=()=>{$$('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');range=b.dataset.range;render()});$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('show');const pullAll=$('#pullAllBtn');if(pullAll)pullAll.onclick=startFullRefresh;addEventListener('resize',render);render();startSafeRefresh();
 </script>
 </body>
 </html>""".replace("__DATA__", json_blob)
@@ -946,11 +1010,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if BASE_PATH and path.startswith(BASE_PATH + "/"):
             path = path[len(BASE_PATH):] or "/"
-        if path in ("/", "/index.html", "/data.json", "/refresh-status"):
+        if path in ("/", "/index.html", "/data.json", "/refresh-status", "/refresh-safe-status"):
             self.send_response(200)
             self.send_header(
                 "Content-Type",
-                "application/json; charset=utf-8" if path in ("/data.json", "/refresh-status") else "text/html; charset=utf-8",
+                "application/json; charset=utf-8" if path in ("/data.json", "/refresh-status", "/refresh-safe-status") else "text/html; charset=utf-8",
             )
             self.end_headers()
             return
@@ -978,16 +1042,26 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json({"ok": True, "status": refresh_status_snapshot()})
             return
+        if path == "/refresh-safe-status":
+            self.send_json({"ok": True, "status": public_refresh_status_snapshot()})
+            return
         self.send_bytes(b"not found", "text/plain; charset=utf-8", 404)
 
     def do_POST(self):
         path = strip_base_path(self.path.split("?", 1)[0])
+        if path == "/refresh-safe":
+            started, reason, status = start_safe_refresh()
+            self.send_json({"ok": True, "started": started, "reason": reason, "status": status}, 202 if started else 200)
+            return
         if path == "/refresh-all":
             if not self.authorized():
                 self.send_json({"ok": False, "error": "unauthorized"}, 401)
                 return
             started, status = start_full_refresh()
-            self.send_json({"ok": True, "started": started, "status": status}, 202)
+            if not started:
+                self.send_json({"ok": False, "error": "refresh already running", "status": status}, 409)
+                return
+            self.send_json({"ok": True, "started": True, "status": status}, 202)
             return
         self.send_json({"ok": False, "error": "not found"}, 404)
 

@@ -218,6 +218,16 @@ def normalize_daily(existing_rows, daily_payload, sleep_payload):
         hrv = safe_int(raw.get("avg_sleep_hrv"))
         baseline = safe_int(raw.get("baseline"))
         ratio = safe_float(raw.get("training_load_ratio"), 2)
+        rhr = safe_int(raw.get("rhr"))
+        short_load = safe_int(raw.get("ati"))
+        long_load = safe_int(raw.get("cti"))
+        training_load = safe_int(raw.get("training_load"))
+        tired_rate = safe_float(raw.get("tired_rate"), 1)
+        vo2max = safe_int(raw.get("vo2max"))
+        lthr = safe_int(raw.get("lthr"))
+        ltsp = safe_int(raw.get("ltsp"))
+        stamina = safe_float(raw.get("stamina_level"), 1)
+        stamina_7d = safe_float(raw.get("stamina_level_7d"), 1)
         base.update(
             {
                 "date": date,
@@ -228,27 +238,67 @@ def normalize_daily(existing_rows, daily_payload, sleep_payload):
                 "rem_min": safe_int(phases.get("rem_minutes")) if sleep else base.get("rem_min"),
                 "awake_min": safe_int(phases.get("awake_minutes")) if sleep else base.get("awake_min"),
                 "nap_min": safe_int(phases.get("nap_minutes")) if sleep else base.get("nap_min"),
-                "hrv": hrv,
-                "hrv_baseline": baseline,
-                "hrv_status": hrv_status(hrv, baseline),
-                "rhr": safe_int(raw.get("rhr")),
-                "short_load": safe_int(raw.get("ati")),
-                "long_load": safe_int(raw.get("cti")),
-                "load_ratio": ratio,
-                "load_status": load_status(ratio),
-                "training_load": safe_int(raw.get("training_load")),
-                "tired_rate": safe_float(raw.get("tired_rate"), 1),
+                "hrv": hrv if hrv is not None else base.get("hrv"),
+                "hrv_baseline": baseline if baseline is not None else base.get("hrv_baseline"),
+                "hrv_status": hrv_status(hrv, baseline) or base.get("hrv_status"),
+                "rhr": rhr if rhr is not None else base.get("rhr"),
+                "short_load": short_load if short_load is not None else base.get("short_load"),
+                "long_load": long_load if long_load is not None else base.get("long_load"),
+                "load_ratio": ratio if ratio is not None else base.get("load_ratio"),
+                "load_status": load_status(ratio) or base.get("load_status"),
+                "training_load": training_load if training_load is not None else base.get("training_load"),
+                "tired_rate": tired_rate if tired_rate is not None else base.get("tired_rate"),
                 "daily_distance_km": safe_float((distance_m or 0) / 1000, 2),
                 "daily_duration_min": safe_int((duration_s or 0) / 60),
-                "vo2max": safe_int(raw.get("vo2max")),
-                "lthr": safe_int(raw.get("lthr")),
-                "ltsp": safe_int(raw.get("ltsp")),
-                "stamina_level": safe_float(raw.get("stamina_level"), 1),
-                "stamina_level_7d": safe_float(raw.get("stamina_level_7d"), 1),
+                "vo2max": vo2max if vo2max is not None else base.get("vo2max"),
+                "lthr": lthr if lthr is not None else base.get("lthr"),
+                "ltsp": ltsp if ltsp is not None else base.get("ltsp"),
+                "stamina_level": stamina if stamina is not None else base.get("stamina_level"),
+                "stamina_level_7d": stamina_7d if stamina_7d is not None else base.get("stamina_level_7d"),
             }
         )
         rows.append(base)
-    return sorted(rows, key=lambda r: r.get("date", ""))
+    return carry_forward_daily(sorted(rows, key=lambda r: r.get("date", "")))
+
+
+def carry_forward_daily(rows):
+    carry_fields = [
+        "hrv",
+        "hrv_baseline",
+        "rhr",
+        "short_load",
+        "long_load",
+        "load_ratio",
+        "load_status",
+        "tired_rate",
+        "vo2max",
+        "lthr",
+        "ltsp",
+        "stamina_level",
+        "stamina_level_7d",
+    ]
+    last_values = {}
+    for row in rows:
+        for field in carry_fields:
+            value = row.get(field)
+            if value is None or value == "":
+                if field in last_values:
+                    row[field] = last_values[field]
+            else:
+                last_values[field] = value
+    for field in carry_fields:
+        first_value = next((row.get(field) for row in rows if row.get(field) is not None and row.get(field) != ""), None)
+        if first_value is None:
+            continue
+        for row in rows:
+            if row.get(field) is None or row.get(field) == "":
+                row[field] = first_value
+            else:
+                break
+    for row in rows:
+        row["hrv_status"] = hrv_status(row.get("hrv"), row.get("hrv_baseline")) or row.get("hrv_status", "")
+        row["load_status"] = load_status(row.get("load_ratio")) or row.get("load_status", "")
+    return rows
 
 
 def normalize_activities(payload):

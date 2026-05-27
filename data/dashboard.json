@@ -2,7 +2,7 @@
   "meta": {
     "project": "sports-log",
     "timezone": "Asia/Shanghai",
-    "generated_at": "2026-05-27 23:12:39",
+    "generated_at": "2026-05-27 23:50:04",
     "window_start": "2026-04-01",
     "window_end": "2026-05-27",
     "source": "cygnusb/coros-mcp",
@@ -28,7 +28,7 @@
     "coros_auth": {
       "user_id": "465763000502992899",
       "region": "asia",
-      "expires_in_hours": 23.9,
+      "expires_in_hours": 23.3,
       "mobile_authenticated": true
     }
   },
@@ -203,11 +203,11 @@
       "tired_rate": 14.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 174,
+      "ltsp": 304,
+      "stamina_level": 74.5,
+      "stamina_level_7d": 102.0
     },
     {
       "date": "2026-04-06",
@@ -284,11 +284,11 @@
       "tired_rate": 18.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 174,
+      "ltsp": 303,
+      "stamina_level": 74.7,
+      "stamina_level_7d": 102.0
     },
     {
       "date": "2026-04-09",
@@ -338,11 +338,11 @@
       "tired_rate": 17.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 302,
+      "stamina_level": 74.8,
+      "stamina_level_7d": 106.0
     },
     {
       "date": "2026-04-11",
@@ -392,11 +392,11 @@
       "tired_rate": 16.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 302,
+      "stamina_level": 74.9,
+      "stamina_level_7d": 100.0
     },
     {
       "date": "2026-04-13",
@@ -500,11 +500,11 @@
       "tired_rate": 17.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 174,
+      "ltsp": 301,
+      "stamina_level": 75.0,
+      "stamina_level_7d": 106.0
     },
     {
       "date": "2026-04-17",
@@ -608,11 +608,11 @@
       "tired_rate": 6.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 174,
+      "ltsp": 301,
+      "stamina_level": 75.0,
+      "stamina_level_7d": 100.0
     },
     {
       "date": "2026-04-21",
@@ -741,7 +741,7 @@
       "lthr": 173,
       "ltsp": 300,
       "stamina_level": 75.3,
-      "stamina_level_7d": null
+      "stamina_level_7d": 100.0
     },
     {
       "date": "2026-04-25",
@@ -907,11 +907,11 @@
       "tired_rate": -5.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 299,
+      "stamina_level": 75.4,
+      "stamina_level_7d": 102.0
     },
     {
       "date": "2026-04-30",
@@ -1009,11 +1009,11 @@
       "tired_rate": -11.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 299,
+      "stamina_level": 75.4,
+      "stamina_level_7d": 94.0
     },
     {
       "date": "2026-05-03",
@@ -1043,11 +1043,11 @@
       "tired_rate": -2.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 299,
+      "stamina_level": 75.4,
+      "stamina_level_7d": 94.0
     },
     {
       "date": "2026-05-04",
@@ -1111,11 +1111,11 @@
       "tired_rate": -10.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 299,
+      "stamina_level": 75.4,
+      "stamina_level_7d": 104.0
     },
     {
       "date": "2026-05-06",
@@ -1247,11 +1247,11 @@
       "tired_rate": 4.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 55,
+      "lthr": 173,
+      "ltsp": 299,
+      "stamina_level": 75.6,
+      "stamina_level_7d": 104.0
     },
     {
       "date": "2026-05-10",
@@ -1519,11 +1519,11 @@
       "tired_rate": -2.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 57,
+      "lthr": 173,
+      "ltsp": 297,
+      "stamina_level": 76.2,
+      "stamina_level_7d": 105.0
     },
     {
       "date": "2026-05-18",
@@ -1587,11 +1587,11 @@
       "tired_rate": -9.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 57,
+      "lthr": 173,
+      "ltsp": 297,
+      "stamina_level": 76.2,
+      "stamina_level_7d": 105.0
     },
     {
       "date": "2026-05-20",
@@ -1736,11 +1736,11 @@
       "tired_rate": -7.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 58,
+      "lthr": 173,
+      "ltsp": 296,
+      "stamina_level": 76.3,
+      "stamina_level_7d": 104.0
     },
     {
       "date": "2026-05-25",
@@ -1790,11 +1790,11 @@
       "tired_rate": -6.0,
       "daily_distance_km": 0.0,
       "daily_duration_min": 0,
-      "vo2max": null,
-      "lthr": null,
-      "ltsp": null,
-      "stamina_level": null,
-      "stamina_level_7d": null
+      "vo2max": 58,
+      "lthr": 173,
+      "ltsp": 296,
+      "stamina_level": 76.5,
+      "stamina_level_7d": 102.0
     },
     {
       "date": "2026-05-27",
