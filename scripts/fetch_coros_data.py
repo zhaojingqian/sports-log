@@ -123,11 +123,6 @@ async def fetch_all(weeks):
         login = await server.authenticate_coros(email=email, password=password, region=region)
         if not login.get("authenticated"):
             raise RuntimeError(login.get("error") or "coros-mcp auto-auth failed")
-        # Sleep phase data uses the mobile API. This call updates only the
-        # mobile fields in the stored auth, and is safe to repeat after expiry.
-        mobile = await server.authenticate_coros_mobile(email=email, password=password, region=region)
-        if not mobile.get("authenticated"):
-            print("warning: coros mobile auth failed; sleep phases may be stale")
         auth = await server.check_coros_auth()
         if not auth.get("authenticated"):
             raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
@@ -137,13 +132,27 @@ async def fetch_all(weeks):
     start_day = start.strftime("%Y%m%d")
     end_day = today.strftime("%Y%m%d")
 
-    daily, sleep, acts, schedule, workouts = await asyncio.gather(
+    daily, acts, schedule, workouts = await asyncio.gather(
         server.get_daily_metrics(weeks=weeks),
-        server.get_sleep_data(weeks=weeks),
         server.list_activities(start_day=start_day, end_day=end_day, page=1, size=100),
         server.list_planned_activities(start_day=today.strftime("%Y%m%d"), end_day=(today + timedelta(days=14)).strftime("%Y%m%d")),
         server.list_workouts(),
     )
+    sleep = {"records": []}
+    if os.environ.get("SPORTS_LOG_ALLOW_MOBILE_AUTH") == "1":
+        email = os.environ.get("COROS_EMAIL")
+        password = os.environ.get("COROS_PASSWORD")
+        region = os.environ.get("COROS_REGION", "eu")
+        if not (email and password):
+            print("warning: mobile auth requested but COROS_EMAIL/COROS_PASSWORD are missing")
+        else:
+            mobile = await server.authenticate_coros_mobile(email=email, password=password, region=region)
+            if not mobile.get("authenticated"):
+                print("warning: coros mobile auth failed; sleep phases may be stale")
+            else:
+                sleep = await server.get_sleep_data(weeks=weeks)
+    else:
+        print("sleep phase fetch skipped: mobile auth disabled to avoid logging out the phone app")
     for name, payload in [
         ("daily", daily),
         ("sleep", sleep),
