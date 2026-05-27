@@ -134,7 +134,7 @@ async def fetch_all(weeks):
 
     daily, acts, schedule, workouts = await asyncio.gather(
         server.get_daily_metrics(weeks=weeks),
-        server.list_activities(start_day=start_day, end_day=end_day, page=1, size=100),
+        fetch_activity_pages(server, start_day, end_day),
         server.list_planned_activities(start_day=today.strftime("%Y%m%d"), end_day=(today + timedelta(days=14)).strftime("%Y%m%d")),
         server.list_workouts(),
     )
@@ -151,6 +151,7 @@ async def fetch_all(weeks):
                 print("warning: coros mobile auth failed; sleep phases may be stale")
             else:
                 sleep = await server.get_sleep_data(weeks=weeks)
+                auth = await server.check_coros_auth()
     else:
         print("sleep phase fetch skipped: mobile auth disabled to avoid logging out the phone app")
     for name, payload in [
@@ -164,6 +165,43 @@ async def fetch_all(weeks):
             raise RuntimeError("%s: %s" % (name, payload["error"]))
     cache = await server.get_cache_status()
     return auth, daily, sleep, acts, schedule, workouts, cache
+
+
+async def fetch_activity_pages(server, start_day, end_day):
+    try:
+        page_size = int(os.environ.get("SPORTS_LOG_ACTIVITY_PAGE_SIZE", "100"))
+    except ValueError:
+        page_size = 100
+    try:
+        max_pages = int(os.environ.get("SPORTS_LOG_ACTIVITY_MAX_PAGES", "50"))
+    except ValueError:
+        max_pages = 50
+    page_size = max(1, min(page_size, 100))
+    max_pages = max(1, max_pages)
+    page = 1
+    total = None
+    activities = []
+    while page <= max_pages:
+        payload = await server.list_activities(start_day=start_day, end_day=end_day, page=page, size=page_size)
+        if isinstance(payload, dict) and payload.get("error"):
+            return payload
+        items = payload.get("activities", []) if isinstance(payload, dict) else []
+        activities.extend(items)
+        total = payload.get("total_count", total) if isinstance(payload, dict) else total
+        if not items:
+            break
+        if total is not None and len(activities) >= int(total):
+            break
+        if len(items) < page_size:
+            break
+        page += 1
+    return {
+        "activities": activities,
+        "total_count": total if total is not None else len(activities),
+        "page": page,
+        "page_size": page_size,
+        "truncated": bool(total is not None and len(activities) < int(total)),
+    }
 
 
 def normalize_daily(existing_rows, daily_payload, sleep_payload):

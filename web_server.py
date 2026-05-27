@@ -4,15 +4,146 @@
 import html
 import json
 import os
+import secrets
+import subprocess
+import sys
+import threading
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler
-from socketserver import TCPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "data", "dashboard.json")
+REFRESH_SCRIPT = os.path.join(BASE_DIR, "scripts", "refresh_data.py")
+REFRESH_TOKEN_FILE = os.path.join(BASE_DIR, ".refresh-token")
 PORT = int(os.environ.get("PORT", "18081"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
+PYTHON_BIN = os.environ.get("SPORTS_LOG_PYTHON", sys.executable)
+REFRESH_TIMEOUT = int(os.environ.get("SPORTS_LOG_REFRESH_TIMEOUT", "600"))
+REFRESH_RUN_LOCK = threading.Lock()
+REFRESH_STATE_LOCK = threading.Lock()
+REFRESH_STATUS = {
+    "running": False,
+    "ok": None,
+    "code": None,
+    "started_at": None,
+    "finished_at": None,
+    "message": "",
+}
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
+def strip_base_path(path):
+    if BASE_PATH and path.startswith(BASE_PATH + "/"):
+        return path[len(BASE_PATH):] or "/"
+    return path
+
+
+def timestamp():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def text_tail(value, limit=4000):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    value = str(value).strip()
+    return value[-limit:] if len(value) > limit else value
+
+
+def get_refresh_token():
+    token = os.environ.get("SPORTS_LOG_REFRESH_TOKEN", "").strip()
+    if token:
+        return token
+    if os.path.exists(REFRESH_TOKEN_FILE):
+        with open(REFRESH_TOKEN_FILE, encoding="utf-8") as f:
+            token = f.read().strip()
+        if token:
+            return token
+    token = secrets.token_urlsafe(32)
+    with open(REFRESH_TOKEN_FILE, "w", encoding="utf-8") as f:
+        f.write(token + "\n")
+    os.chmod(REFRESH_TOKEN_FILE, 0o600)
+    return token
+
+
+def is_refresh_authorized(token):
+    return bool(token) and secrets.compare_digest(token.strip(), get_refresh_token())
+
+
+def refresh_status_snapshot():
+    with REFRESH_STATE_LOCK:
+        return dict(REFRESH_STATUS)
+
+
+def run_full_refresh():
+    code = None
+    ok = False
+    message = ""
+    try:
+        try:
+            weeks_value = int(os.environ.get("SPORTS_LOG_ALL_WEEKS", "52"))
+        except ValueError:
+            weeks_value = 52
+        weeks = str(max(1, min(weeks_value, 52)))
+        env = os.environ.copy()
+        env["SPORTS_LOG_ALLOW_MOBILE_AUTH"] = "1"
+        env["SPORTS_LOG_WEEKS"] = weeks
+        proc = subprocess.run(
+            [PYTHON_BIN, REFRESH_SCRIPT],
+            cwd=BASE_DIR,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=REFRESH_TIMEOUT,
+        )
+        code = proc.returncode
+        ok = code == 0
+        message = text_tail(proc.stdout) or ("refreshed %s weeks" % weeks)
+    except subprocess.TimeoutExpired as exc:
+        code = 124
+        message = text_tail(text_tail(exc.stdout) + "\nfull refresh timed out")
+    except Exception as exc:
+        code = 1
+        message = text_tail("full refresh failed: %s" % exc)
+    finally:
+        with REFRESH_STATE_LOCK:
+            REFRESH_STATUS.update(
+                {
+                    "running": False,
+                    "ok": ok,
+                    "code": code,
+                    "finished_at": timestamp(),
+                    "message": message,
+                }
+            )
+        REFRESH_RUN_LOCK.release()
+
+
+def start_full_refresh():
+    if not REFRESH_RUN_LOCK.acquire(False):
+        return False, refresh_status_snapshot()
+    with REFRESH_STATE_LOCK:
+        REFRESH_STATUS.update(
+            {
+                "running": True,
+                "ok": None,
+                "code": None,
+                "started_at": timestamp(),
+                "finished_at": None,
+                "message": "mobile auth full refresh running",
+            }
+        )
+    worker = threading.Thread(target=run_full_refresh, name="sports-log-full-refresh")
+    worker.daemon = True
+    worker.start()
+    return True, refresh_status_snapshot()
 
 
 def esc(value):
@@ -681,12 +812,12 @@ def build_home():
 <title>Sports Log</title>
 <style>
 :root{color-scheme:light;--bg:#f6f8fc;--surface:#fff;--surface2:#f8fbff;--ink:#0f1b33;--muted:#55627a;--faint:#8994a8;--line:#e4eaf3;--blue:#2563eb;--blue2:#dbeafe;--green:#16a064;--green2:#dcfce7;--orange:#f28c18;--red:#ef4f5f;--cyan:#1798b8;--shadow:0 18px 48px rgba(21,35,65,.08);--font:Geist,Satoshi,"Cabinet Grotesk",Outfit,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"JetBrains Mono","SFMono-Regular",ui-monospace,SFMono-Regular,Menlo,monospace}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;letter-spacing:0;-webkit-font-smoothing:antialiased}button{font:inherit}.app{display:grid;grid-template-columns:76px minmax(0,1fr);min-height:100dvh}.rail{position:sticky;top:0;height:100dvh;background:linear-gradient(180deg,#0b4fd8,#071d37);padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:22px;color:white}.rail-mark{width:44px;height:44px;border-radius:14px;background:#fff;display:grid;place-items:center;color:var(--blue);font-weight:900;font-size:18px;box-shadow:0 14px 30px rgba(0,0,0,.18)}.rail a{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#dbeafe;text-decoration:none;font-size:12px;font-weight:800;border:1px solid transparent}.rail a.active,.rail a:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.16);color:white}.main{padding:26px;max-width:1520px;width:100%;margin:0 auto}.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}.title h1{margin:0;font-size:34px;line-height:1;font-weight:850;letter-spacing:-.04em}.date{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;margin-top:10px}.actions{display:flex;align-items:center;gap:12px}.seg{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 10px 26px rgba(21,35,65,.06)}.seg button{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:8px 12px;font-weight:800;font-size:12px;cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),background .18s}.seg button:active{transform:scale(.97)}.seg button.active{background:var(--blue);color:white}.cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}.card,.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.card{padding:18px;min-height:154px;overflow:hidden}.card-head{display:flex;align-items:center;gap:12px}.dot{width:34px;height:34px;border-radius:12px;background:var(--tone,#dbeafe);display:grid;place-items:center;color:var(--color,var(--blue));font-weight:900}.card span,.panel small,.metric-label{color:var(--muted);font-size:12px;font-weight:700}.card b{display:block;font-size:29px;line-height:1.05;margin:18px 0 8px;font-family:var(--mono);letter-spacing:-.04em}.trend{font-size:12px;font-weight:850;color:var(--green)}.trend.down{color:var(--red)}.spark{width:100%;height:36px;margin-top:8px}.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(340px,1fr);gap:12px}.panel{padding:20px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}.panel h2{margin:0;font-size:17px;line-height:1.15;font-weight:850;letter-spacing:-.02em}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:750}.legend i{display:inline-block;width:18px;height:4px;border-radius:999px;margin-right:6px;vertical-align:2px}.chart{position:relative;height:392px}.chart.short{height:262px}.chart canvas{display:block;width:100%;height:100%}.chart-tip{position:absolute;pointer-events:none;z-index:5;min-width:172px;background:#0f1b33;color:white;border-radius:12px;padding:10px 11px;font-size:12px;line-height:1.45;box-shadow:0 18px 50px rgba(15,27,51,.22);transform:translate(-50%,-112%);opacity:0;transition:opacity .12s}.chart-tip b{display:block;margin-bottom:5px}.chart-tip span{display:flex;justify-content:space-between;gap:18px;color:#d6e1f4}.chart-tip em{font-style:normal;color:#9fb0ca}.side-stack{display:grid;gap:12px}.status{display:grid;grid-template-columns:132px 1fr;gap:18px;align-items:center}.gauge{position:relative;width:132px;height:132px}.gauge svg{width:132px;height:132px;transform:rotate(-90deg)}.gauge circle{fill:none;stroke-width:14;stroke-linecap:round}.gauge .bg{stroke:#e7edf7}.gauge .fg{stroke:var(--green);stroke-dasharray:0 999}.gauge b{position:absolute;inset:0;display:grid;place-items:center;font-size:28px;font-family:var(--mono)}.status h3{font-size:28px;line-height:1.08;margin:0 0 8px;letter-spacing:-.04em}.status p{margin:0;color:var(--muted)}.coach-list{display:grid;gap:10px;margin-top:16px}.coach-list div{border-top:1px solid var(--line);padding-top:10px}.coach-list b{display:block;font-size:13px}.coach-list p{margin:3px 0 0;color:var(--muted);font-size:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.activity-list{display:grid;gap:9px;max-height:444px;overflow:auto;content-visibility:auto;padding-right:2px}.activity{display:grid;grid-template-columns:46px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),border-color .18s}.activity:hover{transform:translateY(-1px);border-color:#cbd8ea}.activity:active{transform:scale(.99)}.badge{width:42px;height:42px;border-radius:50%;background:var(--blue2);color:var(--blue);display:grid;place-items:center;font-family:var(--mono);font-weight:850}.activity h3{margin:0;font-size:13px}.activity p{margin:4px 0 0;color:var(--muted);font-size:12px}.activity .num{font-family:var(--mono);font-weight:850}.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.filters button{border:1px solid var(--line);background:white;color:var(--muted);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}.filters button.active{background:var(--ink);border-color:var(--ink);color:white}.achievements{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.medal{padding:18px;border-radius:14px;background:var(--surface2);border:1px solid var(--line);text-align:center}.medal i{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 12px;border-radius:18px;background:var(--tone,#dbeafe);color:var(--color,var(--blue));font-style:normal;font-weight:900}.medal b{display:block;font-size:14px}.medal span{display:block;color:var(--muted);font-size:12px;margin-top:6px}.drawer{position:fixed;right:22px;bottom:22px;width:min(430px,calc(100% - 44px));background:#0f1b33;color:white;border-radius:16px;padding:20px;box-shadow:0 28px 90px rgba(15,27,51,.36);transform:translateY(130%);transition:.25s cubic-bezier(.16,1,.3,1);z-index:10}.drawer.show{transform:translateY(0)}.drawer button{position:absolute;right:12px;top:10px;border:0;background:#ffffff18;color:white;border-radius:50%;width:30px;height:30px;cursor:pointer}.drawer h2{margin:0 36px 14px 0}.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.detail-stats div{background:#ffffff12;border-radius:10px;padding:10px}.detail-stats span{display:block;color:#b7c6df;font-size:11px}.detail-stats b{font-family:var(--mono)}@media (prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}@media(max-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}.layout,.grid2{grid-template-columns:1fr}.app{grid-template-columns:1fr}.rail{display:none}.main{padding:18px}}@media(max-width:640px){.topbar{display:block}.actions{margin-top:14px}.cards{grid-template-columns:1fr}.title h1{font-size:28px}.status{grid-template-columns:1fr}.achievements{grid-template-columns:1fr 1fr}.chart{height:318px}.chart.short{height:240px}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;letter-spacing:0;-webkit-font-smoothing:antialiased}button{font:inherit}.app{display:grid;grid-template-columns:76px minmax(0,1fr);min-height:100dvh}.rail{position:sticky;top:0;height:100dvh;background:linear-gradient(180deg,#0b4fd8,#071d37);padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:22px;color:white}.rail-mark{width:44px;height:44px;border-radius:14px;background:#fff;display:grid;place-items:center;color:var(--blue);font-weight:900;font-size:18px;box-shadow:0 14px 30px rgba(0,0,0,.18)}.rail-spacer{flex:1}.rail a,.rail-sync{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#dbeafe;text-decoration:none;font-size:12px;font-weight:800;border:1px solid transparent}.rail-sync{background:transparent;cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),background .18s,border-color .18s,color .18s}.rail-sync:active{transform:scale(.96)}.rail a.active,.rail a:hover,.rail-sync:hover,.rail-sync.busy{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.16);color:white}.rail-sync.done{background:rgba(22,160,100,.22);border-color:rgba(99,220,157,.36);color:white}.rail-sync.err{background:rgba(239,79,95,.24);border-color:rgba(255,155,166,.38);color:white}.main{padding:26px;max-width:1520px;width:100%;margin:0 auto}.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}.title h1{margin:0;font-size:34px;line-height:1;font-weight:850;letter-spacing:-.04em}.date{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;margin-top:10px}.actions{display:flex;align-items:center;gap:12px}.seg{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 10px 26px rgba(21,35,65,.06)}.seg button{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:8px 12px;font-weight:800;font-size:12px;cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),background .18s}.seg button:active{transform:scale(.97)}.seg button.active{background:var(--blue);color:white}.cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}.card,.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.card{padding:18px;min-height:154px;overflow:hidden}.card-head{display:flex;align-items:center;gap:12px}.dot{width:34px;height:34px;border-radius:12px;background:var(--tone,#dbeafe);display:grid;place-items:center;color:var(--color,var(--blue));font-weight:900}.card span,.panel small,.metric-label{color:var(--muted);font-size:12px;font-weight:700}.card b{display:block;font-size:29px;line-height:1.05;margin:18px 0 8px;font-family:var(--mono);letter-spacing:-.04em}.trend{font-size:12px;font-weight:850;color:var(--green)}.trend.down{color:var(--red)}.spark{width:100%;height:36px;margin-top:8px}.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(340px,1fr);gap:12px}.panel{padding:20px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}.panel h2{margin:0;font-size:17px;line-height:1.15;font-weight:850;letter-spacing:-.02em}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:750}.legend i{display:inline-block;width:18px;height:4px;border-radius:999px;margin-right:6px;vertical-align:2px}.chart{position:relative;height:392px}.chart.short{height:262px}.chart canvas{display:block;width:100%;height:100%}.chart-tip{position:absolute;pointer-events:none;z-index:5;min-width:172px;background:#0f1b33;color:white;border-radius:12px;padding:10px 11px;font-size:12px;line-height:1.45;box-shadow:0 18px 50px rgba(15,27,51,.22);transform:translate(-50%,-112%);opacity:0;transition:opacity .12s}.chart-tip b{display:block;margin-bottom:5px}.chart-tip span{display:flex;justify-content:space-between;gap:18px;color:#d6e1f4}.chart-tip em{font-style:normal;color:#9fb0ca}.side-stack{display:grid;gap:12px}.status{display:grid;grid-template-columns:132px 1fr;gap:18px;align-items:center}.gauge{position:relative;width:132px;height:132px}.gauge svg{width:132px;height:132px;transform:rotate(-90deg)}.gauge circle{fill:none;stroke-width:14;stroke-linecap:round}.gauge .bg{stroke:#e7edf7}.gauge .fg{stroke:var(--green);stroke-dasharray:0 999}.gauge b{position:absolute;inset:0;display:grid;place-items:center;font-size:28px;font-family:var(--mono)}.status h3{font-size:28px;line-height:1.08;margin:0 0 8px;letter-spacing:-.04em}.status p{margin:0;color:var(--muted)}.coach-list{display:grid;gap:10px;margin-top:16px}.coach-list div{border-top:1px solid var(--line);padding-top:10px}.coach-list b{display:block;font-size:13px}.coach-list p{margin:3px 0 0;color:var(--muted);font-size:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.activity-list{display:grid;gap:9px;max-height:444px;overflow:auto;content-visibility:auto;padding-right:2px}.activity{display:grid;grid-template-columns:46px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);cursor:pointer;transition:transform .18s cubic-bezier(.16,1,.3,1),border-color .18s}.activity:hover{transform:translateY(-1px);border-color:#cbd8ea}.activity:active{transform:scale(.99)}.badge{width:42px;height:42px;border-radius:50%;background:var(--blue2);color:var(--blue);display:grid;place-items:center;font-family:var(--mono);font-weight:850}.activity h3{margin:0;font-size:13px}.activity p{margin:4px 0 0;color:var(--muted);font-size:12px}.activity .num{font-family:var(--mono);font-weight:850}.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.filters button{border:1px solid var(--line);background:white;color:var(--muted);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}.filters button.active{background:var(--ink);border-color:var(--ink);color:white}.achievements{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.medal{padding:18px;border-radius:14px;background:var(--surface2);border:1px solid var(--line);text-align:center}.medal i{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 12px;border-radius:18px;background:var(--tone,#dbeafe);color:var(--color,var(--blue));font-style:normal;font-weight:900}.medal b{display:block;font-size:14px}.medal span{display:block;color:var(--muted);font-size:12px;margin-top:6px}.drawer{position:fixed;right:22px;bottom:22px;width:min(430px,calc(100% - 44px));background:#0f1b33;color:white;border-radius:16px;padding:20px;box-shadow:0 28px 90px rgba(15,27,51,.36);transform:translateY(130%);transition:.25s cubic-bezier(.16,1,.3,1);z-index:10}.drawer.show{transform:translateY(0)}.drawer button{position:absolute;right:12px;top:10px;border:0;background:#ffffff18;color:white;border-radius:50%;width:30px;height:30px;cursor:pointer}.drawer h2{margin:0 36px 14px 0}.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.detail-stats div{background:#ffffff12;border-radius:10px;padding:10px}.detail-stats span{display:block;color:#b7c6df;font-size:11px}.detail-stats b{font-family:var(--mono)}@media (prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}@media(max-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}.layout,.grid2{grid-template-columns:1fr}.app{grid-template-columns:1fr}.rail{display:none}.main{padding:18px}}@media(max-width:640px){.topbar{display:block}.actions{margin-top:14px}.cards{grid-template-columns:1fr}.title h1{font-size:28px}.status{grid-template-columns:1fr}.achievements{grid-template-columns:1fr 1fr}.chart{height:318px}.chart.short{height:240px}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside class="rail"><div class="rail-mark">SL</div><a class="active" href="#overview">OV</a><a href="#load">LD</a><a href="#recovery">RC</a><a href="#activities">AC</a></aside>
+<aside class="rail"><div class="rail-mark">SL</div><a class="active" href="#overview">OV</a><a href="#load">LD</a><a href="#recovery">RC</a><a href="#activities">AC</a><span class="rail-spacer"></span><button class="rail-sync" id="pullAllBtn" type="button" title="Mobile auth 拉取全部 COROS 数据">ALL</button></aside>
 <main class="main" id="overview">
   <div class="topbar"><div class="title"><h1><span id="rangeTitle">7天</span>跑步数据概览</h1><div class="date" id="dateLabel">--</div></div><div class="actions"><div class="seg" aria-label="range"><button data-range="7" class="active">7D</button><button data-range="30">30D</button><button data-range="60">60D</button><button data-range="all">ALL</button></div></div></div>
   <section class="cards" id="cards"></section>
@@ -718,6 +849,12 @@ const sum=(a,fn)=>a.reduce((n,x)=>n+(+fn(x)||0),0);
 const avg=(a,fn)=>{const v=a.map(fn).filter(x=>Number.isFinite(+x));return v.length?v.reduce((m,n)=>m+ +n,0)/v.length:null};
 const last=a=>a[a.length-1]||{}, clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const C={ink:'#0f1b33',muted:'#55627a',faint:'#8994a8',grid:'#dce5f2',blue:'#2563eb',green:'#16a064',orange:'#f28c18',red:'#ef4f5f',cyan:'#1798b8'};
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function setPullAllState(kind,label,title){const b=$('#pullAllBtn');if(!b)return;b.classList.remove('busy','done','err');if(kind)b.classList.add(kind);b.textContent=label;b.title=title||'Mobile auth 拉取全部 COROS 数据';b.disabled=kind==='busy'}
+function getAdminToken(force=false){let token=force?'':localStorage.getItem('sportsLogAdminToken');if(!token){token=prompt('输入 Sports Log 管理 token');if(token)localStorage.setItem('sportsLogAdminToken',token)}return token}
+async function refreshJson(path,token,options={}){const res=await fetch(path,{...options,cache:'no-store',headers:{...(options.headers||{}),'X-Refresh-Token':token}});const body=await res.json().catch(()=>({}));if(res.status===401){localStorage.removeItem('sportsLogAdminToken');throw new Error('管理 token 无效')}if(!res.ok)throw new Error(body.error||body.message||`HTTP ${res.status}`);return body}
+async function pollFullRefresh(token){for(let i=0;i<300;i++){const body=await refreshJson('refresh-status',token);const st=body.status||{};if(!st.running){if(st.ok){setPullAllState('done','OK','全量数据已更新');await sleep(700);location.reload();return}throw new Error(st.message||'全量拉取失败')}await sleep(2000)}throw new Error('全量拉取超时，请稍后查看服务日志')}
+async function startFullRefresh(){let token=getAdminToken();if(!token)return;if(!confirm('将用 COROS mobile auth 拉取最多 52 周数据，可能让手机 App 重新登录。继续？'))return;setPullAllState('busy','RUN','全量数据拉取中');try{await refreshJson('refresh-all',token,{method:'POST'});await pollFullRefresh(token)}catch(err){setPullAllState('err','ERR',err.message);alert(err.message);setTimeout(()=>setPullAllState('', 'ALL'),2400)}}
 const byDate=new Map();DATA.activities.forEach(a=>{const x=byDate.get(a.date)||{km:0,min:0,load:0,cal:0,elev:0,count:0,acts:[]};x.km+=+(a.distance_km||0);x.min+=+(a.duration_min||0);x.load+=+(a.training_load||0);x.cal+=+(a.calories||0);x.elev+=+(a.elevation_gain||0);x.count++;x.acts.push(a);byDate.set(a.date,x)});
 function rows(){return range==='all'?DATA.daily:DATA.daily.slice(-Number(range))}
 function days(src=rows()){return src.map(d=>{const a=byDate.get(d.date)||{};return {...d,km:a.km||0,min:a.min||0,load:a.load||0,cal:a.cal||0,elev:a.elev||0,count:a.count||0,acts:a.acts||[]}})}
@@ -776,7 +913,7 @@ function renderActivities(){const sports=['All',...new Set(DATA.activities.map(a
 function openDrawer(a){$('#drawerTitle').textContent=a.location||a.sport;$('#drawerStats').innerHTML=[['Distance',fmt(a.distance_km,' km')],['Pace',fmt(a.pace)],['Time',fmt(a.duration)],['Avg HR',fmt(a.avg_hr,' bpm')],['Load',fmt(a.training_load,' TL')],['Power',fmt(a.avg_power,' W')]].map(x=>`<div><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');$('#drawer').classList.add('show')}
 function renderAchievements(){const a=days(),activity=acts(),total=sum(activity,x=>x.distance_km),cal=sum(activity,x=>x.calories),elev=sum(activity,x=>x.elevation_gain);$('#achievements').innerHTML=[['坚持达人',`完成跑步 ${activity.length} 次`,C.blue,'RUN'],['距离达人',`累计 ${total.toFixed(1)} 公里`,C.green,'KM'],['燃脂高手',`累计消耗 ${Math.round(cal)} 千卡`,C.red,'K'],['攀登者',`累计爬升 ${Math.round(elev)} 米`,C.orange,'UP']].map(x=>`<div class="medal" style="--color:${x[2]};--tone:${x[2]}1a"><i>${x[3]}</i><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')}
 function render(){const a=days();$('#rangeTitle').textContent=range==='all'?'全部':`${range}天`;$('#dateLabel').textContent=`${a[0]?.date||'--'} – ${last(a).date||'--'}`;renderCards();renderStatus();renderActivities();renderAchievements();drawDistance();drawAbility();drawPace();drawWeeks();drawSleep()}
-$$('.seg button').forEach(b=>b.onclick=()=>{$$('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');range=b.dataset.range;render()});$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('show');addEventListener('resize',render);render();
+$$('.seg button').forEach(b=>b.onclick=()=>{$$('.seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');range=b.dataset.range;render()});$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('show');const pullAll=$('#pullAllBtn');if(pullAll)pullAll.onclick=startFullRefresh;addEventListener('resize',render);render();
 </script>
 </body>
 </html>""".replace("__DATA__", json_blob)
@@ -794,15 +931,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json(self, payload, code=200):
+        self.send_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", code)
+
+    def authorized(self):
+        return is_refresh_authorized(self.headers.get("X-Refresh-Token", ""))
+
     def do_HEAD(self):
         path = self.path.split("?", 1)[0]
+        if BASE_PATH and path == BASE_PATH:
+            self.send_response(301)
+            self.send_header("Location", BASE_PATH + "/")
+            self.end_headers()
+            return
         if BASE_PATH and path.startswith(BASE_PATH + "/"):
             path = path[len(BASE_PATH):] or "/"
-        if path in ("/", "/index.html", "/data.json"):
+        if path in ("/", "/index.html", "/data.json", "/refresh-status"):
             self.send_response(200)
             self.send_header(
                 "Content-Type",
-                "application/json; charset=utf-8" if path == "/data.json" else "text/html; charset=utf-8",
+                "application/json; charset=utf-8" if path in ("/data.json", "/refresh-status") else "text/html; charset=utf-8",
             )
             self.end_headers()
             return
@@ -816,8 +964,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", BASE_PATH + "/")
             self.end_headers()
             return
-        if BASE_PATH and path.startswith(BASE_PATH + "/"):
-            path = path[len(BASE_PATH):] or "/"
+        path = strip_base_path(path)
         if path in ("/", "/index.html"):
             self.send_bytes(build_home().encode("utf-8"), "text/html; charset=utf-8")
             return
@@ -825,12 +972,29 @@ class Handler(BaseHTTPRequestHandler):
             with open(DATA_FILE, "rb") as f:
                 self.send_bytes(f.read(), "application/json; charset=utf-8")
             return
+        if path == "/refresh-status":
+            if not self.authorized():
+                self.send_json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            self.send_json({"ok": True, "status": refresh_status_snapshot()})
+            return
         self.send_bytes(b"not found", "text/plain; charset=utf-8", 404)
+
+    def do_POST(self):
+        path = strip_base_path(self.path.split("?", 1)[0])
+        if path == "/refresh-all":
+            if not self.authorized():
+                self.send_json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            started, status = start_full_refresh()
+            self.send_json({"ok": True, "started": started, "status": status}, 202)
+            return
+        self.send_json({"ok": False, "error": "not found"}, 404)
 
 
 def main():
-    TCPServer.allow_reuse_address = True
-    with TCPServer((HOST, PORT), Handler) as httpd:
+    ThreadedHTTPServer.allow_reuse_address = True
+    with ThreadedHTTPServer((HOST, PORT), Handler) as httpd:
         print("Sports Log Web -> http://%s:%s%s/" % (HOST, PORT, BASE_PATH), flush=True)
         httpd.serve_forever()
 
