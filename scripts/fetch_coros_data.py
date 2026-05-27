@@ -115,7 +115,22 @@ async def fetch_all(weeks):
 
     auth = await server.check_coros_auth()
     if not auth.get("authenticated"):
-        raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
+        email = os.environ.get("COROS_EMAIL")
+        password = os.environ.get("COROS_PASSWORD")
+        region = os.environ.get("COROS_REGION", "eu")
+        if not (email and password):
+            raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
+        login = await server.authenticate_coros(email=email, password=password, region=region)
+        if not login.get("authenticated"):
+            raise RuntimeError(login.get("error") or "coros-mcp auto-auth failed")
+        # Sleep phase data uses the mobile API. This call updates only the
+        # mobile fields in the stored auth, and is safe to repeat after expiry.
+        mobile = await server.authenticate_coros_mobile(email=email, password=password, region=region)
+        if not mobile.get("authenticated"):
+            print("warning: coros mobile auth failed; sleep phases may be stale")
+        auth = await server.check_coros_auth()
+        if not auth.get("authenticated"):
+            raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
 
     today = datetime.now().date()
     start = today - timedelta(weeks=weeks)

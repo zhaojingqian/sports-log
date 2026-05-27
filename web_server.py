@@ -688,7 +688,7 @@ def build_home():
 <div class="app">
 <aside class="rail"><div class="rail-mark">SL</div><a class="active" href="#overview">OV</a><a href="#load">LD</a><a href="#recovery">RC</a><a href="#activities">AC</a></aside>
 <main class="main" id="overview">
-  <div class="topbar"><div class="title"><h1><span id="rangeTitle">30天</span>跑步数据概览</h1><div class="date" id="dateLabel">--</div></div><div class="actions"><div class="seg" aria-label="range"><button data-range="7">7D</button><button data-range="30" class="active">30D</button><button data-range="60">60D</button><button data-range="all">ALL</button></div></div></div>
+  <div class="topbar"><div class="title"><h1><span id="rangeTitle">7天</span>跑步数据概览</h1><div class="date" id="dateLabel">--</div></div><div class="actions"><div class="seg" aria-label="range"><button data-range="7" class="active">7D</button><button data-range="30">30D</button><button data-range="60">60D</button><button data-range="all">ALL</button></div></div></div>
   <section class="cards" id="cards"></section>
   <section class="layout">
     <section class="panel" id="load"><div class="panel-head"><div><h2>距离趋势</h2><small>每日距离柱状图 + 7日移动平均线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>每日距离</span><span><i style="background:var(--green)"></i>7日均线</span></div></div><div class="chart"><canvas id="distanceChart"></canvas></div></section>
@@ -711,7 +711,7 @@ def build_home():
 <script type="application/json" id="payload">__DATA__</script>
 <script>
 const DATA=JSON.parse(document.getElementById('payload').textContent);
-let range=30,sportFilter='All';
+let range=7,sportFilter='All';
 const $=q=>document.querySelector(q), $$=q=>[...document.querySelectorAll(q)];
 const fmt=(v,s='')=>(v===null||v===undefined||v==='')?'--':`${v}${s}`;
 const sum=(a,fn)=>a.reduce((n,x)=>n+(+fn(x)||0),0);
