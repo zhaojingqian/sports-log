@@ -1,58 +1,37 @@
 # sports-log
 
-COROS sports and recovery dashboard for `https://zzzgry.top/sport/`.
+个人 COROS 运动记录网站：`https://zzzgry.top/sport/`
 
-## What it shows
+它把 COROS 中的运动、恢复和健康数据整理成一个公开可读的网页，用来持续记录训练状态和跑步能力变化。页面不是后台系统，也不是数据管理工具，而是一个面向浏览和分享的个人运动日志。
 
-- Profile, devices, recovery, running fitness, race predictions
-- Daily health: steps, calories, exercise minutes, stress, sleep
-- HRV, resting heart rate, average heart rate
-- Training load: short-term load, long-term load, load ratio, COROS status
-- Sport records with distance, pace, HR, calories, location and activity ids
-- Training calendar entries
-- Weekly and monthly summaries
+## 展示内容
 
-## Run locally
+- 最近 `1D`、`7D`、`30D`、`60D` 与全部数据视图
+- 总跑步次数、总距离、总时长、平均配速、消耗和爬升
+- 每日距离趋势，以及 7 日移动平均线
+- 配速趋势和 7 次均线
+- HRV、Load、VO2max 的每日变化和 7 次均线
+- 睡眠结构、恢复状态、静息心率等恢复相关指标
+- 每周跑步总结，展示距离、时长和训练次数变化
+- 最近活动记录，包括距离、配速、心率、训练负荷和功率
+- 阶段成就卡片，用更直观的方式概括当前训练周期
 
-```bash
-BASE_PATH=/sport PORT=18081 /root/.pyenv/versions/3.10.13/bin/python3 web_server.py
-```
+## 数据更新
 
-Then open `http://127.0.0.1:18081/sport/`.
+网站数据来自 COROS，并通过本地的 `coros-mcp` 接入后生成页面数据。
 
-## Refresh data
+- 页面打开时会尝试进行一次安全刷新
+- 每天 `23:00` 自动更新当天数据
+- 支持手动全量刷新，用于补充 mobile auth 才能拿到的数据
+- 默认刷新不会使用 mobile auth，避免影响手机 App 登录状态
 
-```bash
-/root/.pyenv/versions/3.10.13/bin/python3 scripts/refresh_data.py
-```
+## 设计目标
 
-The refresh script first calls the local `cygnusb/coros-mcp` checkout, then recomputes weekly/monthly summaries from `data/dashboard.json`.
+- 简洁：减少解释性文字，把主要空间留给图表和数据
+- 直观：通过折线、柱状图、均线和摘要卡片展示训练变化
+- 连续：缺失的能力数据会沿用最近一次有效值，保证趋势可读
+- 真实：展示实际训练记录，不做社交化包装，也不虚构指标
 
-Current server integration:
+## 隐私说明
 
-- coros-mcp checkout: `/root/workspace/coros-mcp`
-- coros-mcp Python: `/root/workspace/coros-mcp/.venv/bin/python`
-- refresh entrypoint: `/root/workspace/sports-log/scripts/refresh_data.py`
-- cron: daily at 23:00
-
-Manual auth check:
-
-```bash
-/root/workspace/coros-mcp/.venv/bin/coros-mcp auth-status
-```
-
-Manual auth:
-
-```bash
-cd /root/workspace/coros-mcp
-/root/workspace/coros-mcp/.venv/bin/coros-mcp auth
-```
-
-Note: `coros-mcp auth` stores a 24-hour web token. For fully unattended daily refresh after token expiry, put `COROS_EMAIL`, `COROS_PASSWORD`, and `COROS_REGION` in `/root/workspace/coros-mcp/.env` with restrictive permissions, or re-authenticate manually before the token expires.
-
-References used for summary rules:
-
-- COROS Fitness Metrics: https://support.coros.com/hc/en-us/articles/360061452651-COROS-Fitness-Metrics-Explained
-- ACSM Physical Activity Guidelines: https://acsm.org/education-resources/trending-topics-resources/physical-activity-guidelines/
-- TrainingPeaks Form / TSB: https://help.trainingpeaks.com/hc/en-us/articles/204071764-Form-TSB
-- coros-mcp: https://github.com/cygnusb/coros-mcp
+仓库只保存网站代码。个人运动数据、COROS 凭据、本地刷新 token、日志和生成文件都不应进入 git。
