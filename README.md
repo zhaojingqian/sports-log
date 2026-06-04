@@ -18,16 +18,17 @@
 - 睡眠结构、恢复状态、静息心率等恢复相关指标
 - 每周跑步总结，展示距离、时长和训练次数变化
 - 最近活动记录，包括距离、配速、心率、训练负荷和功率
+- 单次活动详情浮窗，展示训练摘要、分段数据、心率区间和运动记录
 - 阶段成就卡片，用更直观的方式概括当前训练周期
 
 ### 数据更新
 
 网站数据来自 COROS，并通过本地的 `coros-mcp` 接入后生成页面数据。
 
-- 页面打开时会尝试进行一次安全刷新
+- 页面打开时会尝试进行一次安全刷新，同步当天活动、恢复和可用的睡眠数据
 - 每天 `23:00` 自动更新当天数据
 - 支持手动全量刷新，用于补充 mobile auth 才能拿到的数据
-- 默认刷新不会使用 mobile auth，避免影响手机 App 登录状态
+- 默认刷新会复用已有安全凭据，不主动发起 mobile auth，避免影响手机 App 登录状态
 
 ### 设计目标
 
@@ -56,16 +57,17 @@ It turns COROS activity, recovery, and health data into a public, readable web p
 - Sleep structure, recovery state, resting heart rate, and related recovery metrics
 - Weekly running summaries for distance, duration, and session count
 - Recent activities with distance, pace, heart rate, training load, and power
+- Per-activity detail drawer with workout summary, splits, heart-rate zones, and notes
 - Achievement cards that summarize the current training period at a glance
 
 ### Data Updates
 
 The website uses COROS data through a local `coros-mcp` integration.
 
-- The page attempts a safe refresh when opened
+- The page attempts a safe refresh when opened, updating today's activities, recovery, and available sleep data
 - Daily data is updated automatically at `23:00`
 - Full refresh is available for mobile-auth-only data
-- Default refresh does not use mobile auth, so it avoids logging out the phone app
+- Default refresh reuses existing safe credentials and does not actively start mobile auth, avoiding phone-app login disruption
 
 ### Design Goals
 
