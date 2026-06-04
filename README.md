@@ -12,7 +12,7 @@
 
 - 最近 `1D`、`7D`、`30D`、`60D` 与全部数据视图
 - 总跑步次数、总距离、总时长、平均配速、消耗和爬升
-- 每日距离趋势，以及 7 日移动平均线
+- 每日距离折线趋势，以及 7 日移动平均线
 - 配速趋势和 7 次均线
 - HRV、Load、VO2max 的每日变化和 7 次均线
 - 睡眠结构、恢复状态、静息心率等恢复相关指标
@@ -33,7 +33,8 @@
 ### 设计目标
 
 - 简洁：减少解释性文字，把主要空间留给图表和数据
-- 直观：通过折线、柱状图、均线和摘要卡片展示训练变化
+- 专业：采用统一的运动仪表盘视觉，让卡片、图表、状态和详情浮窗保持一致
+- 直观：通过折线、均线、摘要卡片和状态反馈展示训练变化
 - 连续：缺失的能力数据会沿用最近一次有效值，保证趋势可读
 - 真实：展示实际训练记录，不做社交化包装，也不虚构指标
 
@@ -51,7 +52,7 @@ It turns COROS activity, recovery, and health data into a public, readable web p
 
 - Recent `1D`, `7D`, `30D`, `60D`, and all-data views
 - Total runs, distance, duration, average pace, calories, and elevation gain
-- Daily distance trend with a 7-day moving average
+- Daily distance line trend with a 7-day moving average
 - Pace trend with a 7-activity moving average
 - Daily HRV, Load, and VO2max trends with 7-sample moving averages
 - Sleep structure, recovery state, resting heart rate, and related recovery metrics
@@ -72,7 +73,8 @@ The website uses COROS data through a local `coros-mcp` integration.
 ### Design Goals
 
 - Minimal: keep explanatory text low and give charts and data the main space
-- Clear: use lines, bars, moving averages, and summary cards to show training changes
+- Polished: use a unified sports-dashboard visual style across cards, charts, status blocks, and detail drawers
+- Clear: use lines, moving averages, summary cards, and status feedback to show training changes
 - Continuous: missing fitness values reuse the latest available value to keep trends readable
 - Real: show actual training records without social-style packaging or invented metrics
 
