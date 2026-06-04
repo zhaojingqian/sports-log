@@ -153,7 +153,16 @@ async def fetch_all(weeks):
                 sleep = await server.get_sleep_data(weeks=weeks)
                 auth = await server.check_coros_auth()
     else:
-        print("sleep phase fetch skipped: mobile auth disabled to avoid logging out the phone app")
+        mobile_status = auth.get("mobile_token_status", "")
+        can_fetch_sleep = auth.get("mobile_authenticated") or "refresh" in mobile_status
+        if os.environ.get("SPORTS_LOG_FETCH_SLEEP", "1") == "1" and can_fetch_sleep:
+            sleep_try = await server.get_sleep_data(weeks=weeks)
+            if isinstance(sleep_try, dict) and sleep_try.get("error"):
+                print("warning: sleep refresh skipped: %s" % sleep_try.get("error"))
+            else:
+                sleep = sleep_try
+        else:
+            print("sleep phase fetch skipped: no reusable mobile token")
     for name, payload in [
         ("daily", daily),
         ("sleep", sleep),
