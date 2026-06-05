@@ -914,8 +914,8 @@ body{background:linear-gradient(180deg,#f8fbff 0%,#f3f8f6 48%,#fbfaf7 100%);text
 .seg{border-radius:8px;border-color:var(--line);background:rgba(255,255,255,.86);box-shadow:0 10px 28px rgba(17,24,39,.06)}.seg button{border-radius:6px;padding:8px 11px}.seg button.active{background:var(--ink)}
 .cards{gap:10px;margin-bottom:12px}.card,.panel{border-radius:8px;border-color:var(--line);background:rgba(255,255,255,.9);box-shadow:var(--shadow)}
 .card{padding:16px;min-height:142px}.card:hover,.panel:hover{border-color:#cbd8e6}.dot{border-radius:8px}.card b{font-size:26px;margin:16px 0 8px}.card small{font-size:12px;color:var(--muted)}.trend{display:inline-flex;align-items:center;border-radius:999px;background:var(--green2);padding:3px 7px}.trend.down{background:#fff0f2}
-.layout{grid-template-columns:minmax(0,1.45fr) minmax(330px,.95fr);gap:12px;align-items:start}.panel{padding:18px}.panel-head{margin-bottom:10px}.panel h2{font-size:16px;font-weight:810;letter-spacing:0}.panel small{font-weight:650;color:var(--muted)}.legend{gap:12px}.legend i{height:3px;width:20px}
-.chart{height:320px}.chart.distance{height:312px}.chart.short{height:246px}.chart.weekly{height:332px}.chart.sleep{height:352px}.chart-tip{border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(10,18,32,.96);box-shadow:0 18px 48px rgba(15,27,51,.24)}
+.layout{grid-template-columns:minmax(0,1.45fr) minmax(330px,.95fr);gap:12px;align-items:start}.primary-stack,.insight-stack{display:grid;gap:12px;align-content:start;min-width:0}.panel{padding:18px}.panel-head{margin-bottom:10px}.panel h2{font-size:16px;font-weight:810;letter-spacing:0}.panel small{font-weight:650;color:var(--muted)}.legend{gap:12px}.legend i{height:3px;width:20px}
+.chart{height:320px}.chart.distance{height:292px}.chart.short{height:238px}.chart.weekly{height:332px}.chart.sleep{height:352px}.chart-tip{border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(10,18,32,.96);box-shadow:0 18px 48px rgba(15,27,51,.24)}
 .status{background:linear-gradient(135deg,rgba(255,255,255,.94),rgba(242,249,245,.92));grid-template-columns:118px 1fr}.gauge,.gauge svg{width:118px;height:118px}.status h3{font-size:25px}
 .activity{border-radius:8px;background:#fff;grid-template-columns:44px 1fr auto}.activity:hover{background:#f9fcff;border-color:#b9c9dc;transform:translateY(-2px)}.badge{width:38px;height:38px;border-radius:8px;background:var(--blue2);color:#1356c5}.filters button{border-radius:8px;background:#fff}.filters button.active{background:var(--ink)}
 .medal{border-radius:8px;background:#fbfdff}.medal i{border-radius:8px}.drawer{border-radius:10px;background:#111b2d}.drawer button{border-radius:8px}.detail-section{overflow-x:auto}.detail-stats div{border-radius:8px}.zone-row{grid-template-columns:56px 1fr 54px}
@@ -923,6 +923,7 @@ body{background:linear-gradient(180deg,#f8fbff 0%,#f3f8f6 48%,#fbfaf7 100%);text
 @media(max-width:640px){.main{padding:14px}.title h1{font-size:26px}.card,.panel{padding:14px}.chart{height:286px}.chart.distance{height:260px}.chart.short{height:226px}.chart.weekly{height:318px}.chart.sleep{height:334px}}
 @media(max-width:900px){.hero-panel{grid-template-columns:1fr}.hero-kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.hero-main h2{font-size:36px}.hero-main p{font-size:12px;line-height:1.48}.hero-kpis div{padding:10px}.hero-kpis b{font-size:17px}.panel-head{display:block}.legend{margin-top:8px}}
+@media(min-width:1181px){.activity-panel{grid-column:1/-1}}
 @media(max-width:1180px){.layout,.grid2{grid-template-columns:1fr}.layout{align-items:stretch}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:640px){html,body{overflow-x:hidden}.main{width:100%;overflow:hidden}.cards,.layout,.grid2,.hero-panel{grid-template-columns:minmax(0,1fr)}.status{grid-template-columns:1fr}.hero-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-main,.hero-main p{max-width:100%;white-space:normal;word-break:break-all}}
 </style>
@@ -935,18 +936,20 @@ body{background:linear-gradient(180deg,#f8fbff 0%,#f3f8f6 48%,#fbfaf7 100%);text
   <section class="hero-panel"><div class="hero-main"><span class="eyebrow">COROS PERFORMANCE LOG</span><h2 id="heroMetric">--</h2><p id="heroNarrative">--</p></div><div class="hero-kpis" id="heroKpis"></div></section>
   <section class="cards" id="cards"></section>
   <section class="layout">
-    <section class="panel" id="load"><div class="panel-head"><div><h2>距离趋势</h2><small>每日距离折线 + 7日移动平均线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>每日距离</span><span><i style="background:var(--green)"></i>7日均线</span></div></div><div class="chart distance"><canvas id="distanceChart"></canvas></div></section>
-    <aside class="side-stack">
+    <div class="primary-stack">
+      <section class="panel distance-panel" id="load"><div class="panel-head"><div><h2>距离趋势</h2><small>每日距离折线 + 7日移动平均线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>每日距离</span><span><i style="background:var(--green)"></i>7日均线</span></div></div><div class="chart distance"><canvas id="distanceChart"></canvas></div></section>
+      <section class="panel pace-panel"><div class="panel-head"><div><h2>配速趋势</h2><small>活动配速，越高代表越慢</small></div><div class="legend"><span><i style="background:var(--blue)"></i>配速</span><span><i style="background:var(--green)"></i>7次均线</span></div></div><div class="chart short"><canvas id="paceChart"></canvas></div></section>
+    </div>
+    <aside class="insight-stack">
       <section class="panel status"><div class="gauge"><svg viewBox="0 0 160 160"><circle class="bg" cx="80" cy="80" r="62"></circle><circle class="fg" id="statusRing" cx="80" cy="80" r="62"></circle></svg><b id="statusScore">--</b></div><div><h3 id="statusTitle">--</h3><p id="statusText">--</p></div></section>
       <section class="panel" id="recovery"><div class="panel-head"><div><h2>跑步能力变化</h2><small>细线每日值 + 粗线7次均线</small></div><div class="legend"><span><i style="background:var(--blue)"></i>VO2</span><span><i style="background:var(--green)"></i>HRV</span><span><i style="background:var(--orange)"></i>Load</span></div></div><div class="chart short"><canvas id="abilityChart"></canvas></div></section>
       <section class="panel"><h2>Coach Summary</h2><div class="coach-list" id="coachList"></div></section>
     </aside>
   </section>
   <section class="grid2">
-    <section class="panel"><div class="panel-head"><div><h2>配速趋势</h2><small>活动配速，越高代表越慢</small></div><div class="legend"><span><i style="background:var(--blue)"></i>配速</span><span><i style="background:var(--green)"></i>7次均线</span></div></div><div class="chart short"><canvas id="paceChart"></canvas></div></section>
     <section class="panel"><div class="panel-head"><div><h2>每周跑步总结</h2><small>三泳道折线：距离 / 时长 / 次数</small></div><div class="legend"><span><i style="background:var(--blue)"></i>距离</span><span><i style="background:var(--orange)"></i>时长</span><span><i style="background:var(--green)"></i>次数</span></div></div><div class="chart weekly"><canvas id="weekChart"></canvas></div></section>
     <section class="panel"><div class="panel-head"><div><h2>睡眠与恢复</h2><small>上方睡眠结构，下方恢复趋势</small></div><div class="legend"><span><i style="background:var(--sleep-light)"></i>浅睡</span><span><i style="background:var(--green)"></i>深睡</span><span><i style="background:var(--violet)"></i>REM</span><span><i style="background:var(--sleep-awake)"></i>清醒</span><span><i style="background:var(--cyan)"></i>HRV</span><span><i style="background:var(--orange)"></i>RHR</span></div></div><div class="chart sleep"><canvas id="sleepChart"></canvas></div></section>
-    <section class="panel" id="activities"><div class="panel-head"><div><h2>最近活动</h2><small id="activityCount">--</small></div></div><div class="filters" id="filters"></div><div class="activity-list" id="activityList"></div></section>
+    <section class="panel activity-panel" id="activities"><div class="panel-head"><div><h2>最近活动</h2><small id="activityCount">--</small></div></div><div class="filters" id="filters"></div><div class="activity-list" id="activityList"></div></section>
   </section>
   <section class="panel" style="margin-top:12px"><div class="panel-head"><div><h2>阶段成就</h2><small>基于当前区间自动汇总</small></div></div><div class="achievements" id="achievements"></div></section>
 </main>
