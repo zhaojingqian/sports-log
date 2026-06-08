@@ -6,3 +6,4 @@ logs/*.log
 data/*.bak
 data/dashboard.json
 .refresh-token
+*.fit

@@ -19,6 +19,7 @@
 - 每周跑步总结，展示距离、时长和训练次数变化
 - 最近活动记录，包括距离、配速、心率、训练负荷和功率
 - 单次活动详情浮窗，展示训练摘要、分段数据、心率区间和运动记录
+- FIT 文件导入分析，支持秒级曲线、时间/距离横轴切换、指标开关和分段均值/范围查看
 - 阶段成就卡片，用更直观的方式概括当前训练周期
 
 ### 数据更新
@@ -40,7 +41,7 @@
 
 ### 隐私说明
 
-仓库只保存网站代码。个人运动数据、COROS 凭据、本地刷新 token、日志和生成文件都不应进入 git。
+仓库只保存网站代码。个人运动数据、COROS 凭据、本地刷新 token、日志和生成文件都不应进入 git。手动导入的 FIT 文件只用于即时解析展示，不作为仓库数据保存。
 
 ## English
 
@@ -59,6 +60,7 @@ It turns COROS activity, recovery, and health data into a public, readable web p
 - Weekly running summaries for distance, duration, and session count
 - Recent activities with distance, pace, heart rate, training load, and power
 - Per-activity detail drawer with workout summary, splits, heart-rate zones, and notes
+- FIT file import analysis with second-by-second curves, time/distance x-axis switching, metric toggles, and split average/range views
 - Achievement cards that summarize the current training period at a glance
 
 ### Data Updates
@@ -80,4 +82,4 @@ The website uses COROS data through a local `coros-mcp` integration.
 
 ### Privacy
 
-This repository stores website code only. Personal COROS data, credentials, local refresh tokens, logs, and generated files should stay on the server and out of git.
+This repository stores website code only. Personal COROS data, credentials, local refresh tokens, logs, and generated files should stay on the server and out of git. Manually imported FIT files are parsed for immediate display and are not stored as repository data.
