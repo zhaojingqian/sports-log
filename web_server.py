@@ -1043,6 +1043,8 @@ function hover(c,pts,html){const t=tip(c);c.onmousemove=e=>{if(!pts.length)retur
 function paceSec(p){const m=String(p||'').match(/(\\d+):(\\d+)/);return m?+m[1]*60+ +m[2]:null}
 function paceText(s){if(!Number.isFinite(s))return'--';return `${Math.floor(s/60)}'${String(Math.round(s%60)).padStart(2,'0')}"`}
 function durationText(s){if(!Number.isFinite(+s))return'--';const total=Math.round(+s),h=Math.floor(total/3600),m=Math.floor((total%3600)/60),sec=total%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
+function drawSmoothPath(ctx,pts){if(!pts.length)return;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);if(pts.length===1)return;if(pts.length===2){ctx.lineTo(pts[1].x,pts[1].y);return}for(let i=1;i<pts.length-1;i++){const mx=(pts[i].x+pts[i+1].x)/2,my=(pts[i].y+pts[i+1].y)/2;ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my)}const last=pts[pts.length-1];ctx.lineTo(last.x,last.y)}
+function fitSmoothPoints(points,metric){if(points.length<4)return points;const windows={heart_rate:7,pace_sec_per_km:15,speed_mps:13,power_w:11,cadence_spm:9,step_length_cm:11,stance_time_ms:13,vertical_oscillation_mm:13,vertical_ratio_pct:13,altitude_m:9},win=Math.min(windows[metric.key]||9,points.length%2?points.length:points.length-1),half=Math.floor(win/2);return points.map((pt,i)=>{let total=0,weight=0;for(let j=Math.max(0,i-half);j<=Math.min(points.length-1,i+half);j++){const w=half+1-Math.abs(i-j);total+=points[j].y*w;weight+=w}return{...pt,yRaw:pt.y,y:total/weight}})}
 function fitMetric(key){return fitData?.metrics?.find(m=>m.key===key)||null}
 function fitValid(metric,value){const n=+value;return Number.isFinite(n)&&(metric?.key==='altitude_m'||n>0)}
 function fitValue(metric,value){if(!metric||!fitValid(metric,value))return'--';if(metric.format==='pace')return paceText(+value);const p=Number.isFinite(+metric.precision)?+metric.precision:1;return p===0?String(Math.round(+value)):(+value).toFixed(p)}
@@ -1080,13 +1082,13 @@ function renderFitInsights(){
 function drawFitChart(){
  if(!fitData||!$('#fitChart'))return;
  const c=$('#fitChart'),{ctx,w,h}=canvas(c),p={l:46,r:18,t:18,b:36},iw=w-p.l-p.r,ih=h-p.t-p.b,records=fitData.records||[],xKey=fitAxisMode==='distance'?'distance_km':'sec',selected=(fitData.metrics||[]).filter(m=>fitSelectedKeys.includes(m.key));
- ctx.clearRect(0,0,w,h);ctx.strokeStyle=C.grid;ctx.lineWidth=1;for(let i=0;i<5;i++){const y=p.t+i*ih/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke()}ctx.fillStyle=C.faint;ctx.font='11px Geist, system-ui';ctx.textAlign='left';ctx.fillText(selected.length?'相对刻度':'选择指标',p.l,p.t+4);
+ ctx.clearRect(0,0,w,h);ctx.strokeStyle=C.grid;ctx.lineWidth=1;for(let i=0;i<5;i++){const y=p.t+i*ih/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke()}ctx.fillStyle=C.faint;ctx.font='11px Geist, system-ui';ctx.textAlign='left';ctx.fillText(selected.length?'相对刻度 · 平滑曲线':'选择指标',p.l,p.t+4);
  const xs=records.map(r=>+r[xKey]).filter(Number.isFinite),minX=Math.min(...xs,0),maxX=Math.max(...xs,1),spanX=maxX-minX||1;
  selected.forEach(metric=>{
-  const lo=+metric.min,hi=+metric.max,span=hi-lo||1;let started=false;ctx.strokeStyle=metric.color;ctx.lineWidth=2.2;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
-  records.forEach(row=>{const xVal=+row[xKey],v=+row[metric.key];if(!Number.isFinite(xVal)||!fitValid(metric,v)){started=false;return}const ratio=metric.invert?1-(v-lo)/span:(v-lo)/span,x=p.l+((xVal-minX)/spanX)*iw,y=h-p.b-clamp(ratio,0,1)*ih;if(started)ctx.lineTo(x,y);else{ctx.moveTo(x,y);started=true}});
-  ctx.stroke();
-  const lastRow=[...records].reverse().find(r=>fitValid(metric,r[metric.key])&&Number.isFinite(+r[xKey]));if(lastRow){const x=p.l+((+lastRow[xKey]-minX)/spanX)*iw,v=+lastRow[metric.key],ratio=metric.invert?1-(v-lo)/span:(v-lo)/span,y=h-p.b-clamp(ratio,0,1)*ih;drawDot(ctx,{x,y},metric.color,3.4,.95);ctx.fillStyle=metric.color;ctx.font='11px Geist, system-ui';ctx.fillText(metric.label,clamp(x+6,p.l,w-54),clamp(y-6,p.t+10,h-p.b-8))}
+  const lo=+metric.min,hi=+metric.max,span=hi-lo||1,segments=[];let seg=[],lastSmooth=null;ctx.strokeStyle=metric.color;ctx.lineWidth=2.35;ctx.lineJoin='round';ctx.lineCap='round';
+  records.forEach(row=>{const xVal=+row[xKey],v=+row[metric.key];if(!Number.isFinite(xVal)||!fitValid(metric,v)){if(seg.length)segments.push(seg);seg=[];return}const ratio=metric.invert?1-(v-lo)/span:(v-lo)/span,x=p.l+((xVal-minX)/spanX)*iw,y=h-p.b-clamp(ratio,0,1)*ih;seg.push({x,y,row,value:v,metric})});if(seg.length)segments.push(seg);
+  segments.forEach(points=>{const smooth=fitSmoothPoints(points,metric);if(!smooth.length)return;ctx.save();ctx.globalAlpha=.96;drawSmoothPath(ctx,smooth);ctx.stroke();ctx.restore();lastSmooth=smooth[smooth.length-1]});
+  if(lastSmooth){drawDot(ctx,lastSmooth,metric.color,3.4,.95);ctx.fillStyle=metric.color;ctx.font='11px Geist, system-ui';ctx.fillText(metric.label,clamp(lastSmooth.x+6,p.l,w-54),clamp(lastSmooth.y-6,p.t+10,h-p.b-8))}
  });
  const ticks=Math.min(6,records.length);ctx.fillStyle=C.faint;ctx.font='11px Geist, system-ui';ctx.textAlign='center';for(let i=0;i<ticks;i++){const idx=Math.round(i*(records.length-1)/Math.max(1,ticks-1)),row=records[idx]||{},x=p.l+(((+row[xKey]||0)-minX)/spanX)*iw,label=fitAxisMode==='distance'?`${(+row.distance_km||0).toFixed(1)}k`:durationText(row.sec);ctx.fillText(label,clamp(x,28,w-28),h-11)}
  const pts=records.filter(r=>Number.isFinite(+r[xKey])).map(r=>({x:p.l+((+r[xKey]-minX)/spanX)*iw,y:h*.48,row:r}));
@@ -1344,7 +1346,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             file_item = form["file"] if "file" in form else None
             if isinstance(file_item, list):
-                file_item = file_item[0] if file_item else None
+                file_item = file_item[0] if len(file_item) else None
             payload = get_fit_import_payload(file_item)
             self.send_json(payload, 200 if payload.get("ok") else 400)
             return
