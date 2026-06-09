@@ -24,6 +24,10 @@ REFRESH_TOKEN_FILE = os.path.join(BASE_DIR, ".refresh-token")
 PORT = int(os.environ.get("PORT", "18081"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
+UMAMI_SCRIPT = (
+    '<script defer src="https://cloud.umami.is/script.js" '
+    'data-website-id="848a0bed-4004-423d-8f2b-52c9cbd39d93"></script>'
+)
 PYTHON_BIN = os.environ.get("SPORTS_LOG_PYTHON", sys.executable)
 COROS_PYTHON = os.environ.get("COROS_PYTHON", "/root/workspace/coros-mcp/.venv/bin/python")
 REFRESH_TIMEOUT = int(os.environ.get("SPORTS_LOG_REFRESH_TIMEOUT", "600"))
@@ -54,6 +58,10 @@ def strip_base_path(path):
     if BASE_PATH and path.startswith(BASE_PATH + "/"):
         return path[len(BASE_PATH):] or "/"
     return path
+
+
+def inject_umami(html_doc):
+    return html_doc.replace("</head>", UMAMI_SCRIPT + "\n</head>", 1)
 
 
 def timestamp():
@@ -908,7 +916,7 @@ render();
 </script>
 </body>
 </html>""".replace("__DATA__", json_blob)
-    return html_doc
+    return inject_umami(html_doc)
 
 
 def build_home():
@@ -1242,7 +1250,7 @@ $$('.actions .seg button').forEach(b=>b.onclick=()=>{$$('.actions .seg button').
 </script>
 </body>
 </html>""".replace("__DATA__", json_blob)
-    return html_doc
+    return inject_umami(html_doc)
 
 
 class Handler(BaseHTTPRequestHandler):

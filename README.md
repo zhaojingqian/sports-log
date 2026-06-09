@@ -43,6 +43,10 @@
 
 仓库只保存网站代码。个人运动数据、COROS 凭据、本地刷新 token、日志和生成文件都不应进入 git。手动导入的 FIT 文件只用于即时解析展示，不作为仓库数据保存。
 
+### 访问统计
+
+页面内置 Umami Cloud 统计脚本，用于记录匿名访问量和页面浏览数据；不保存 COROS 凭据、FIT 文件或个人运动原始数据。
+
 ## English
 
 A personal COROS sports log website: `https://zzzgry.top/sport/`
@@ -83,3 +87,7 @@ The website uses COROS data through a local `coros-mcp` integration.
 ### Privacy
 
 This repository stores website code only. Personal COROS data, credentials, local refresh tokens, logs, and generated files should stay on the server and out of git. Manually imported FIT files are parsed for immediate display and are not stored as repository data.
+
+### Analytics
+
+Pages include the Umami Cloud tracking script for anonymous page-view analytics. It does not store COROS credentials, FIT files, or raw personal activity data in this repository.
