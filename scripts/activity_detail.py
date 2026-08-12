@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Fetch and normalize one COROS activity detail record."""
+"""Fetch and normalize one COROS activity through the gateway boundary."""
 
 import asyncio
 import json
 import os
 import sys
 
-COROS_MCP_DIR = os.environ.get("COROS_MCP_DIR", "/root/workspace/coros-mcp")
-sys.path.insert(0, COROS_MCP_DIR)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from sports_log.integrations.coros import CorosGateway  # noqa: E402
 
 
 def safe_float(value, digits=2):
@@ -162,11 +165,10 @@ async def main():
         raise SystemExit("usage: activity_detail.py ACTIVITY_ID [SPORT_TYPE]")
     activity_id = sys.argv[1]
     sport_type = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else 0
-    import server
-
-    detail = await server.get_activity_detail(activity_id=activity_id, sport_type=sport_type)
-    if isinstance(detail, dict) and detail.get("error"):
-        print(json.dumps({"ok": False, "error": detail["error"]}, ensure_ascii=False))
+    try:
+        detail = await CorosGateway().fetch_activity_detail(activity_id, sport_type)
+    except RuntimeError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
     print(json.dumps({"ok": True, "detail": normalize_detail(detail)}, ensure_ascii=False))
     return 0

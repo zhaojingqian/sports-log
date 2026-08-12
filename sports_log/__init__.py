@@ -1,0 +1,1 @@
+"""Sports Log application package."""

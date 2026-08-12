@@ -24,7 +24,9 @@
 
 ### 数据更新
 
-网站数据来自 COROS，并通过本地的 `coros-mcp` 接入后生成页面数据。
+网站数据来自 COROS。独立维护的 `workspace/integrations/coros-mcp` 负责连接上游，
+`sports_log.integrations.coros.CorosGateway` 隔离其 API 变化，标准化脚本再生成稳定的
+`data/dashboard.json`，网页层只读取该内部数据模型。
 
 - 页面打开时会尝试进行一次安全刷新，同步当天活动、恢复和可用的睡眠数据
 - 每天 `23:00` 自动更新当天数据
@@ -69,7 +71,10 @@ It turns COROS activity, recovery, and health data into a public, readable web p
 
 ### Data Updates
 
-The website uses COROS data through a local `coros-mcp` integration.
+The website reads COROS through the independently versioned
+`workspace/integrations/coros-mcp` checkout. `CorosGateway` isolates upstream
+API changes, normalization produces the stable `data/dashboard.json` model,
+and the web layer only reads that internal model.
 
 - The page attempts a safe refresh when opened, updating today's activities, recovery, and available sleep data
 - Daily data is updated automatically at `23:00`

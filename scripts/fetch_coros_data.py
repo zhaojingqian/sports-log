@@ -1,25 +1,18 @@
 #!/usr/bin/env python3
-"""Fetch COROS data through the local cygnusb/coros-mcp checkout.
-
-Run with /root/workspace/coros-mcp/.venv/bin/python. The script imports the
-MCP tool functions directly and normalizes their data into dashboard.json.
-"""
+"""Normalize COROS gateway data into the stable sports-log dashboard schema."""
 
 import asyncio
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_FILE = os.path.join(BASE_DIR, "data", "dashboard.json")
-COROS_MCP_DIR = os.environ.get("COROS_MCP_DIR", "/root/workspace/coros-mcp")
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
-sys.path.insert(0, COROS_MCP_DIR)
-
-from dotenv import load_dotenv  # noqa: E402
-
-load_dotenv(os.path.join(COROS_MCP_DIR, ".env"))
+from sports_log.integrations.coros import CorosGateway  # noqa: E402
+from sports_log.settings import DATA_FILE  # noqa: E402
 
 
 def ymd(day):
@@ -98,119 +91,29 @@ def hrv_status(hrv, baseline):
 
 
 def load_dashboard():
-    with open(DATA_FILE, encoding="utf-8") as f:
+    with DATA_FILE.open(encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_dashboard(data):
-    tmp = DATA_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    tmp = DATA_FILE.with_suffix(DATA_FILE.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write("\n")
-    os.replace(tmp, DATA_FILE)
+    os.replace(str(tmp), str(DATA_FILE))
 
 
 async def fetch_all(weeks):
-    import server
-
-    auth = await server.check_coros_auth()
-    if not auth.get("authenticated"):
-        email = os.environ.get("COROS_EMAIL")
-        password = os.environ.get("COROS_PASSWORD")
-        region = os.environ.get("COROS_REGION", "eu")
-        if not (email and password):
-            raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
-        login = await server.authenticate_coros(email=email, password=password, region=region)
-        if not login.get("authenticated"):
-            raise RuntimeError(login.get("error") or "coros-mcp auto-auth failed")
-        auth = await server.check_coros_auth()
-        if not auth.get("authenticated"):
-            raise RuntimeError(auth.get("message") or auth.get("error") or "coros-mcp is not authenticated")
-
-    today = datetime.now().date()
-    start = today - timedelta(weeks=weeks)
-    start_day = start.strftime("%Y%m%d")
-    end_day = today.strftime("%Y%m%d")
-
-    daily, acts, schedule, workouts = await asyncio.gather(
-        server.get_daily_metrics(weeks=weeks),
-        fetch_activity_pages(server, start_day, end_day),
-        server.list_planned_activities(start_day=today.strftime("%Y%m%d"), end_day=(today + timedelta(days=14)).strftime("%Y%m%d")),
-        server.list_workouts(),
+    snapshot = await CorosGateway().fetch_snapshot(weeks)
+    return (
+        snapshot["auth"],
+        snapshot["daily"],
+        snapshot["sleep"],
+        snapshot["activities"],
+        snapshot["schedule"],
+        snapshot["workouts"],
+        snapshot["cache"],
     )
-    sleep = {"records": []}
-    if os.environ.get("SPORTS_LOG_ALLOW_MOBILE_AUTH") == "1":
-        email = os.environ.get("COROS_EMAIL")
-        password = os.environ.get("COROS_PASSWORD")
-        region = os.environ.get("COROS_REGION", "eu")
-        if not (email and password):
-            print("warning: mobile auth requested but COROS_EMAIL/COROS_PASSWORD are missing")
-        else:
-            mobile = await server.authenticate_coros_mobile(email=email, password=password, region=region)
-            if not mobile.get("authenticated"):
-                print("warning: coros mobile auth failed; sleep phases may be stale")
-            else:
-                sleep = await server.get_sleep_data(weeks=weeks)
-                auth = await server.check_coros_auth()
-    else:
-        mobile_status = auth.get("mobile_token_status", "")
-        can_fetch_sleep = auth.get("mobile_authenticated") or "refresh" in mobile_status
-        if os.environ.get("SPORTS_LOG_FETCH_SLEEP", "1") == "1" and can_fetch_sleep:
-            sleep_try = await server.get_sleep_data(weeks=weeks)
-            if isinstance(sleep_try, dict) and sleep_try.get("error"):
-                print("warning: sleep refresh skipped: %s" % sleep_try.get("error"))
-            else:
-                sleep = sleep_try
-        else:
-            print("sleep phase fetch skipped: no reusable mobile token")
-    for name, payload in [
-        ("daily", daily),
-        ("sleep", sleep),
-        ("activities", acts),
-        ("schedule", schedule),
-        ("workouts", workouts),
-    ]:
-        if isinstance(payload, dict) and payload.get("error"):
-            raise RuntimeError("%s: %s" % (name, payload["error"]))
-    cache = await server.get_cache_status()
-    return auth, daily, sleep, acts, schedule, workouts, cache
-
-
-async def fetch_activity_pages(server, start_day, end_day):
-    try:
-        page_size = int(os.environ.get("SPORTS_LOG_ACTIVITY_PAGE_SIZE", "100"))
-    except ValueError:
-        page_size = 100
-    try:
-        max_pages = int(os.environ.get("SPORTS_LOG_ACTIVITY_MAX_PAGES", "50"))
-    except ValueError:
-        max_pages = 50
-    page_size = max(1, min(page_size, 100))
-    max_pages = max(1, max_pages)
-    page = 1
-    total = None
-    activities = []
-    while page <= max_pages:
-        payload = await server.list_activities(start_day=start_day, end_day=end_day, page=page, size=page_size)
-        if isinstance(payload, dict) and payload.get("error"):
-            return payload
-        items = payload.get("activities", []) if isinstance(payload, dict) else []
-        activities.extend(items)
-        total = payload.get("total_count", total) if isinstance(payload, dict) else total
-        if not items:
-            break
-        if total is not None and len(activities) >= int(total):
-            break
-        if len(items) < page_size:
-            break
-        page += 1
-    return {
-        "activities": activities,
-        "total_count": total if total is not None else len(activities),
-        "page": page,
-        "page_size": page_size,
-        "truncated": bool(total is not None and len(activities) < int(total)),
-    }
 
 
 def normalize_daily(existing_rows, daily_payload, sleep_payload):

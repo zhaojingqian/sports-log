@@ -16,8 +16,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs
 
+from sports_log.settings import COROS_PYTHON as COROS_PYTHON_PATH
+from sports_log.settings import DATA_FILE as DATA_FILE_PATH
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "data", "dashboard.json")
+DATA_FILE = str(DATA_FILE_PATH)
 REFRESH_SCRIPT = os.path.join(BASE_DIR, "scripts", "refresh_data.py")
 ACTIVITY_DETAIL_SCRIPT = os.path.join(BASE_DIR, "scripts", "activity_detail.py")
 REFRESH_TOKEN_FILE = os.path.join(BASE_DIR, ".refresh-token")
@@ -29,7 +32,7 @@ UMAMI_SCRIPT = (
     'data-website-id="848a0bed-4004-423d-8f2b-52c9cbd39d93"></script>'
 )
 PYTHON_BIN = os.environ.get("SPORTS_LOG_PYTHON", sys.executable)
-COROS_PYTHON = os.environ.get("COROS_PYTHON", "/root/workspace/coros-mcp/.venv/bin/python")
+COROS_PYTHON = str(COROS_PYTHON_PATH)
 REFRESH_TIMEOUT = int(os.environ.get("SPORTS_LOG_REFRESH_TIMEOUT", "600"))
 DETAIL_TIMEOUT = int(os.environ.get("SPORTS_LOG_DETAIL_TIMEOUT", "45"))
 SAFE_REFRESH_COOLDOWN_SECONDS = int(os.environ.get("SPORTS_LOG_SAFE_REFRESH_COOLDOWN", "120"))

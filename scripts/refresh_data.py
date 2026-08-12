@@ -11,12 +11,20 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_FILE = os.path.join(BASE_DIR, "data", "dashboard.json")
-COROS_PYTHON = os.environ.get("COROS_PYTHON", "/root/workspace/coros-mcp/.venv/bin/python")
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from sports_log.settings import COROS_PYTHON as COROS_PYTHON_PATH  # noqa: E402
+from sports_log.settings import DATA_FILE as DATA_FILE_PATH  # noqa: E402
+from sports_log.settings import validate_coros_runtime  # noqa: E402
+
+DATA_FILE = str(DATA_FILE_PATH)
+COROS_PYTHON = str(COROS_PYTHON_PATH)
 COROS_FETCHER = os.path.join(BASE_DIR, "scripts", "fetch_coros_data.py")
 
 
@@ -144,8 +152,9 @@ def recompute(data):
 def fetch_coros_if_available():
     if os.environ.get("SPORTS_LOG_SKIP_COROS") == "1":
         return
-    if not (os.path.exists(COROS_PYTHON) and os.path.exists(COROS_FETCHER)):
-        print("coros fetch skipped: coros-mcp environment not found")
+    runtime_error = validate_coros_runtime()
+    if runtime_error or not os.path.exists(COROS_FETCHER):
+        print("coros fetch skipped: %s" % (runtime_error or "fetcher not found"))
         return
     proc = subprocess.run(
         [COROS_PYTHON, COROS_FETCHER],
@@ -164,9 +173,9 @@ def main():
     parser.add_argument("--check-coros", action="store_true", help="Only report whether coros-mcp is installed.")
     args = parser.parse_args()
     if args.check_coros:
-        rc = os.system("command -v coros-mcp >/dev/null 2>&1")
-        print("coros-mcp installed" if rc == 0 else "coros-mcp not installed")
-        return 0 if rc == 0 else 1
+        runtime_error = validate_coros_runtime()
+        print(runtime_error or "coros-mcp runtime ready: %s" % COROS_PYTHON)
+        return 1 if runtime_error else 0
     fetch_coros_if_available()
     data = recompute(load_data())
     save_data(data)

@@ -6,13 +6,15 @@ import shutil
 import subprocess
 from datetime import datetime
 
-BASE_DIR = "/root/workspace/sports-log"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 PYTHON = "/root/.pyenv/versions/3.10.13/bin/python3"
+WORKSPACE_CTL = os.path.join(WORKSPACE_ROOT, "bin", "workspace-ctl")
 SERVICE_PATH = "/etc/systemd/system/sports-log-web.service"
 NGINX_CONF = "/www/server/panel/vhost/nginx/zzzgry.top.conf"
 CRON_LINE = (
-    "0 23 * * *   %s %s/scripts/refresh_data.py >> %s/logs/cron-refresh.log 2>&1"
-    % (PYTHON, BASE_DIR, BASE_DIR)
+    "0 23 * * *   %s refresh sports >> %s/logs/cron-refresh.log 2>&1"
+    % (WORKSPACE_CTL, BASE_DIR)
 )
 
 SERVICE = """[Unit]
@@ -22,18 +24,26 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/workspace/sports-log
+WorkingDirectory={base_dir}
 Environment=BASE_PATH=/sport
 Environment=PORT=18081
-ExecStart=/root/.pyenv/versions/3.10.13/bin/python3 /root/workspace/sports-log/web_server.py
+EnvironmentFile={workspace_root}/.env
+EnvironmentFile={workspace_root}/.env.d/coros.env
+EnvironmentFile={workspace_root}/.env.d/sports-log.env
+ExecStart={python} {base_dir}/web_server.py
 Restart=always
 RestartSec=5
-StandardOutput=append:/root/workspace/sports-log/logs/web.log
-StandardError=append:/root/workspace/sports-log/logs/web.log
+StandardOutput=append:{base_dir}/logs/web.log
+StandardError=append:{base_dir}/logs/web.log
 
 [Install]
 WantedBy=multi-user.target
-"""
+""".format(
+    base_dir=BASE_DIR,
+    workspace_root=WORKSPACE_ROOT,
+    coros_mcp_root=COROS_MCP_ROOT,
+    python=PYTHON,
+)
 
 NGINX_BLOCK = """    # -- sports-log reverse proxy ------------------------------------------
     location /sport/ {
@@ -83,10 +93,14 @@ def install_cron():
     try:
         current = subprocess.check_output(["crontab", "-l"], text=True, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-        current = ""
+    current = ""
     if CRON_LINE in current:
         return
-    lines = [line for line in current.splitlines() if "sports-log/scripts/refresh_data.py" not in line]
+    lines = [
+        line
+        for line in current.splitlines()
+        if "sports-log/scripts/refresh_data.py" not in line and "workspace-ctl refresh sports" not in line
+    ]
     lines.extend(["", "# sports-log 每天 23:00 更新当天 COROS 数据/汇总", CRON_LINE])
     data = "\n".join(lines).strip() + "\n"
     proc = subprocess.run(["crontab", "-"], input=data, text=True, check=True)
@@ -106,4 +120,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
