@@ -8,7 +8,6 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
-PYTHON = "/root/.pyenv/versions/3.10.13/bin/python3"
 WORKSPACE_CTL = os.path.join(WORKSPACE_ROOT, "bin", "workspace-ctl")
 SERVICE_PATH = "/etc/systemd/system/sports-log-web.service"
 NGINX_CONF = "/www/server/panel/vhost/nginx/zzzgry.top.conf"
@@ -30,7 +29,7 @@ Environment=PORT=18081
 EnvironmentFile={workspace_root}/.env
 EnvironmentFile={workspace_root}/.env.d/coros.env
 EnvironmentFile={workspace_root}/.env.d/sports-log.env
-ExecStart={python} {base_dir}/web_server.py
+ExecStart={workspace_ctl} sports serve
 Restart=always
 RestartSec=5
 StandardOutput=append:{base_dir}/logs/web.log
@@ -41,8 +40,7 @@ WantedBy=multi-user.target
 """.format(
     base_dir=BASE_DIR,
     workspace_root=WORKSPACE_ROOT,
-    coros_mcp_root=COROS_MCP_ROOT,
-    python=PYTHON,
+    workspace_ctl=WORKSPACE_CTL,
 )
 
 NGINX_BLOCK = """    # -- sports-log reverse proxy ------------------------------------------
@@ -93,7 +91,7 @@ def install_cron():
     try:
         current = subprocess.check_output(["crontab", "-l"], text=True, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-    current = ""
+        current = ""
     if CRON_LINE in current:
         return
     lines = [
